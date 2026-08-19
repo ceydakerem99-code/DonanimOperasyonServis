@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         AppLogger.app.info("Application did finish launching")
+        #if DEBUG
+        Task { await DemoAccountSeeder.seedIfNeeded(container: container) }
+        #endif
         let coordinator = container.syncCoordinator
         container.backgroundSyncScheduler.register { handle in
             await coordinator.handleBackgroundTask(handle)
