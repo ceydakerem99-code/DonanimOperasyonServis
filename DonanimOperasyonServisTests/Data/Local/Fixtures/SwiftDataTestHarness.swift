@@ -22,6 +22,8 @@ struct SwiftDataTestHarness {
     let signatures: SwiftDataSignatureRepository
     let editRequests: SwiftDataEditRequestRepository
     let notifications: SwiftDataNotificationRepository
+    let syncOperations: SwiftDataSyncOperationRepository
+    let syncConflicts: SwiftDataSyncConflictRepository
 
     init(clock: @Sendable @escaping () -> Date = { DomainFixtures.referenceDate }) throws {
         let container = try ModelContainerFactory.inMemory()
@@ -38,5 +40,7 @@ struct SwiftDataTestHarness {
         self.signatures = SwiftDataSignatureRepository(store: store)
         self.editRequests = SwiftDataEditRequestRepository(store: store)
         self.notifications = SwiftDataNotificationRepository(store: store)
+        self.syncOperations = SwiftDataSyncOperationRepository(store: store)
+        self.syncConflicts = SwiftDataSyncConflictRepository(store: store)
     }
 }

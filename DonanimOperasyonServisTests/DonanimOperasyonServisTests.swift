@@ -35,6 +35,8 @@ final class DonanimOperasyonServisTests: XCTestCase {
         XCTAssertNotNil(container.signatureRepository)
         XCTAssertNotNil(container.editRequestRepository)
         XCTAssertNotNil(container.notificationRepository)
+        XCTAssertNotNil(container.syncOperationRepository)
+        XCTAssertNotNil(container.syncConflictRepository)
         XCTAssertNotNil(container.remoteUserRepository)
         XCTAssertNotNil(container.remoteCustomerRepository)
         XCTAssertNotNil(container.remoteWorkOrderRepository)

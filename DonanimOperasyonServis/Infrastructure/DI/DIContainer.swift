@@ -10,8 +10,9 @@ import SwiftData
 /// `DIContainer` at call sites.
 ///
 /// Phase 4 keeps **both** local and remote repository families
-/// wired, without composing them. Phase 5 will introduce
-/// `SyncManager` that reads from both. Until then:
+/// wired, without composing them. Phase 5B adds a local SwiftData
+/// sync queue. `SyncManager` (Phase 5C) will drain that queue
+/// toward Firebase. Until then:
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
 ///   the SwiftData implementations used by the running app.
@@ -46,6 +47,8 @@ final class DIContainer: Sendable {
     let signatureRepository: any SignatureRepository
     let editRequestRepository: any EditRequestRepository
     let notificationRepository: any NotificationRepository
+    let syncOperationRepository: any SyncOperationRepository
+    let syncConflictRepository: any SyncConflictRepository
 
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
@@ -128,6 +131,8 @@ final class DIContainer: Sendable {
         self.signatureRepository                = SwiftDataSignatureRepository(store: store)
         self.editRequestRepository              = SwiftDataEditRequestRepository(store: store)
         self.notificationRepository             = SwiftDataNotificationRepository(store: store)
+        self.syncOperationRepository            = SwiftDataSyncOperationRepository(store: store)
+        self.syncConflictRepository             = SwiftDataSyncConflictRepository(store: store)
 
         self.remoteUserRepository                     = FirebaseUserRepository(dataSource: firestoreDataSource)
         self.remoteCustomerRepository                 = FirebaseCustomerRepository(dataSource: firestoreDataSource)

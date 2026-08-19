@@ -31,7 +31,9 @@ enum ModelContainerFactory {
         SignatureModel.self,
         EditRequestModel.self,
         NotificationModel.self,
-        LocalSessionModel.self
+        LocalSessionModel.self,
+        SyncOperationModel.self,
+        SyncConflictModel.self
     ]
 
     static var schema: Schema { Schema(modelTypes) }
