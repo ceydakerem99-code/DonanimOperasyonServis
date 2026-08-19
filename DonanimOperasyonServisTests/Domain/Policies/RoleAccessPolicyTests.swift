@@ -15,6 +15,7 @@ final class RoleAccessPolicyTests: XCTestCase {
     func testAdminCannotApproveOrRejectEditRequests() {
         XCTAssertFalse(RoleAccessPolicy.can(.approveEditRequest, as: .admin))
         XCTAssertFalse(RoleAccessPolicy.can(.rejectEditRequest, as: .admin))
+        XCTAssertFalse(RoleAccessPolicy.can(.resolveSyncConflict, as: .admin))
     }
 
     func testAdminCannotPerformFieldWork() {
@@ -48,6 +49,7 @@ final class RoleAccessPolicyTests: XCTestCase {
         XCTAssertTrue(RoleAccessPolicy.can(.viewServiceReport, as: .operator))
         XCTAssertTrue(RoleAccessPolicy.can(.approveEditRequest, as: .operator))
         XCTAssertTrue(RoleAccessPolicy.can(.rejectEditRequest, as: .operator))
+        XCTAssertTrue(RoleAccessPolicy.can(.resolveSyncConflict, as: .operator))
     }
 
     func testOperatorCannotAdminister() {
@@ -79,6 +81,7 @@ final class RoleAccessPolicyTests: XCTestCase {
         XCTAssertFalse(RoleAccessPolicy.can(.assignWorkOrder, as: .technician))
         XCTAssertFalse(RoleAccessPolicy.can(.approveEditRequest, as: .technician))
         XCTAssertFalse(RoleAccessPolicy.can(.rejectEditRequest, as: .technician))
+        XCTAssertFalse(RoleAccessPolicy.can(.resolveSyncConflict, as: .technician))
         XCTAssertFalse(RoleAccessPolicy.can(.manageUsers, as: .technician))
     }
 

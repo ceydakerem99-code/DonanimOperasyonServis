@@ -43,7 +43,8 @@ enum RoleAccessPolicy {
             .viewAllWorkOrders,
             .viewServiceReport,
             .approveEditRequest,
-            .rejectEditRequest
+            .rejectEditRequest,
+            .resolveSyncConflict
         ],
 
         .technician: [

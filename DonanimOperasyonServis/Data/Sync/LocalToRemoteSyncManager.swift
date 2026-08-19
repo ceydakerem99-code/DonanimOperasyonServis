@@ -46,6 +46,10 @@ actor LocalToRemoteSyncManager: SyncManaging {
 
         let latest = try await queue.fetch(id: operation.id)
 
+        if try await shouldHoldForUnresolvedOrAbandonedConflict(latest) {
+            return
+        }
+
         switch latest.status {
         case .inProgress, .succeeded, .conflict:
             return
@@ -91,6 +95,26 @@ actor LocalToRemoteSyncManager: SyncManaging {
     }
 
     // MARK: - Outcomes
+
+    /// An unresolved conflict, or a `useRemote` resolution that
+    /// abandoned the local mutation, must not be pushed again.
+    /// `useLocal` lifts the hold so the existing state machine can
+    /// continue (pending/failed rows) or a newly enqueued row can run.
+    private func shouldHoldForUnresolvedOrAbandonedConflict(
+        _ operation: SyncOperation
+    ) async throws -> Bool {
+        guard let conflict = try await conflicts.fetch(syncOperationId: operation.id) else {
+            return false
+        }
+        switch conflict.resolution {
+        case nil:
+            return true
+        case .useRemote:
+            return true
+        case .useLocal:
+            return false
+        }
+    }
 
     private func markSucceeded(_ operation: SyncOperation, now: Date) async throws {
         var done = operation

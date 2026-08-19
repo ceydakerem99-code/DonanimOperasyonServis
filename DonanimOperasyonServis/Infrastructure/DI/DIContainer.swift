@@ -11,7 +11,8 @@ import SwiftData
 ///
 /// Phase 5C wires `SyncManager` to drain the local queue toward
 /// the Firebase repositories. Phase 5D adds remote → local
-/// reconciliation. `ConflictResolver` is a later phase.
+/// reconciliation. Phase 5E adds `ConflictResolver` for explicit
+/// `useLocal` / `useRemote` / `unresolved` decisions.
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
 ///   the SwiftData implementations used by the running app.
@@ -50,6 +51,7 @@ final class DIContainer: Sendable {
     let syncConflictRepository: any SyncConflictRepository
     let syncManager: any SyncManaging
     let reconciliationEngine: any Reconciling
+    let conflictResolver: any ConflictResolving
 
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
@@ -176,6 +178,12 @@ final class DIContainer: Sendable {
             remote: remoteEntities
         )
         self.reconciliationEngine = RemoteToLocalReconciliationEngine(
+            queue: self.syncOperationRepository,
+            conflicts: self.syncConflictRepository,
+            local: localEntities,
+            remote: remoteEntities
+        )
+        self.conflictResolver = LocalConflictResolver(
             queue: self.syncOperationRepository,
             conflicts: self.syncConflictRepository,
             local: localEntities,

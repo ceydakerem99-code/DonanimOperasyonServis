@@ -9,8 +9,9 @@ import Foundation
 /// - overwrite remote `inProgress` with local `completed` without
 ///   a resolver decision
 ///
-/// `ConflictResolver` (later phase) is the only place that may
-/// choose `useLocal` or `useRemote`.
+/// `ConflictResolver` still must **not** auto-apply `useLocal` or
+/// `useRemote` here: a completed ↔ non-completed pair stays
+/// `unresolved` so the completed order cannot reopen.
 enum CompletedWorkOrderSyncRule {
 
     enum Divergence: Hashable, Sendable {

@@ -6,6 +6,10 @@ import SwiftData
 /// Kept as its own table so conflict payloads are not stuffed into
 /// `SyncOperationModel` as a JSON blob. `syncOperationId` is a
 /// string foreign key (same convention as other Domain typed IDs).
+///
+/// Resolution metadata (`resolutionRaw`, `resolvedAt`,
+/// `resolvedByUserId`) is optional so existing unresolved rows
+/// lightweight-migrate without a status-enum expansion.
 @Model
 final class SyncConflictModel {
 
@@ -20,6 +24,9 @@ final class SyncConflictModel {
     var remoteReference: String?
     var detectedAt: Date
     var statusRaw: String
+    var resolutionRaw: String?
+    var resolvedAt: Date?
+    var resolvedByUserId: String?
 
     init(
         id: String,
@@ -31,7 +38,10 @@ final class SyncConflictModel {
         localReference: String?,
         remoteReference: String?,
         detectedAt: Date,
-        statusRaw: String
+        statusRaw: String,
+        resolutionRaw: String? = nil,
+        resolvedAt: Date? = nil,
+        resolvedByUserId: String? = nil
     ) {
         self.id = id
         self.syncOperationId = syncOperationId
@@ -43,6 +53,9 @@ final class SyncConflictModel {
         self.remoteReference = remoteReference
         self.detectedAt = detectedAt
         self.statusRaw = statusRaw
+        self.resolutionRaw = resolutionRaw
+        self.resolvedAt = resolvedAt
+        self.resolvedByUserId = resolvedByUserId
     }
 }
 
@@ -61,7 +74,10 @@ extension SyncConflictModel {
             localReference: domain.localReference,
             remoteReference: domain.remoteReference,
             detectedAt: domain.detectedAt,
-            statusRaw: domain.status.rawValue
+            statusRaw: domain.status.rawValue,
+            resolutionRaw: domain.resolution?.rawValue,
+            resolvedAt: domain.resolvedAt,
+            resolvedByUserId: domain.resolvedByUserId?.rawValue
         )
     }
 
@@ -75,6 +91,9 @@ extension SyncConflictModel {
         self.remoteReference = domain.remoteReference
         self.detectedAt = domain.detectedAt
         self.statusRaw = domain.status.rawValue
+        self.resolutionRaw = domain.resolution?.rawValue
+        self.resolvedAt = domain.resolvedAt
+        self.resolvedByUserId = domain.resolvedByUserId?.rawValue
     }
 
     func toDomain() -> SyncConflict? {
@@ -82,6 +101,23 @@ extension SyncConflictModel {
             let entityType = SyncEntityType(rawValue: entityTypeRaw),
             let status = SyncConflictStatus(rawValue: statusRaw)
         else { return nil }
+
+        let resolution: SyncConflictResolutionChoice?
+        if let resolutionRaw {
+            guard let parsed = SyncConflictResolutionChoice(rawValue: resolutionRaw) else {
+                return nil
+            }
+            resolution = parsed
+        } else {
+            resolution = nil
+        }
+
+        let actor: UserID?
+        if let resolvedByUserId, !resolvedByUserId.isEmpty {
+            actor = UserID(resolvedByUserId)
+        } else {
+            actor = nil
+        }
 
         return SyncConflict(
             id: SyncConflictID(id),
@@ -93,7 +129,10 @@ extension SyncConflictModel {
             localReference: localReference,
             remoteReference: remoteReference,
             detectedAt: detectedAt,
-            status: status
+            status: status,
+            resolution: resolution,
+            resolvedAt: resolvedAt,
+            resolvedByUserId: actor
         )
     }
 }

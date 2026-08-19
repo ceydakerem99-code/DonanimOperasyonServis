@@ -23,6 +23,7 @@ final class SwiftDataSyncConflictRepositoryTests: XCTestCase {
         let fetched = try await harness.syncConflicts.fetch(id: conflict.id)
         XCTAssertEqual(fetched, conflict)
         XCTAssertEqual(fetched.status, .unresolved)
+        XCTAssertNil(fetched.resolution)
         XCTAssertEqual(fetched.localVersion, 4)
         XCTAssertEqual(fetched.remoteVersion, 7)
 
@@ -148,6 +149,45 @@ final class SwiftDataSyncConflictRepositoryTests: XCTestCase {
 
         model.statusRaw = "useLocal"
         XCTAssertNil(model.toDomain())
+        model.statusRaw = SyncConflictStatus.unresolved.rawValue
+
+        model.resolutionRaw = "banana"
+        XCTAssertNil(model.toDomain())
+        model.resolutionRaw = SyncConflictResolutionChoice.useRemote.rawValue
+        XCTAssertEqual(model.toDomain()?.resolution, .useRemote)
+    }
+
+    func testResolvedMetadataRoundTripsAndRowIsNotDeleted() async throws {
+        let harness = try SwiftDataTestHarness()
+        let original = SyncConflict.unresolved(
+            id: SyncConflictID("cf-keep"),
+            syncOperationId: SyncOperationID("op-keep"),
+            entityType: .customer,
+            entityId: "cust-keep",
+            localVersion: 3,
+            remoteVersion: 5,
+            localReference: "local/keep",
+            remoteReference: "remote/keep",
+            detectedAt: now
+        )
+        try await harness.syncConflicts.save(original)
+        let resolved = original.markingResolved(
+            choice: .useRemote,
+            at: now.addingTimeInterval(8),
+            by: UserID("user-operator-1")
+        )
+        try await harness.syncConflicts.save(resolved)
+
+        let fetched = try await harness.syncConflicts.fetch(id: original.id)
+        XCTAssertEqual(fetched.resolution, .useRemote)
+        XCTAssertEqual(fetched.resolvedByUserId, UserID("user-operator-1"))
+        XCTAssertEqual(fetched.localVersion, 3)
+        XCTAssertEqual(fetched.remoteVersion, 5)
+        XCTAssertEqual(fetched.localReference, "local/keep")
+        XCTAssertEqual(fetched.remoteReference, "remote/keep")
+
+        let open = try await harness.syncConflicts.listUnresolved()
+        XCTAssertTrue(open.isEmpty)
     }
 
     func testFetchByMissingSyncOperationIdReturnsNil() async throws {

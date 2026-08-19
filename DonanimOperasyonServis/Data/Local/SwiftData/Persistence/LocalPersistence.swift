@@ -556,7 +556,9 @@ actor LocalPersistence {
                 ]
             )
         )
-        return try rows.map { try requireDecoded($0.toDomain(), entity: "SyncConflict") }
+        return try rows
+            .map { try requireDecoded($0.toDomain(), entity: "SyncConflict") }
+            .filter { $0.resolution == nil }
     }
 
 #if DEBUG

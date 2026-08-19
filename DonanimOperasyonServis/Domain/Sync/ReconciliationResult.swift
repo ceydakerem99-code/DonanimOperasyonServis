@@ -3,8 +3,9 @@ import Foundation
 /// Outcome of comparing one local entity against its remote counterpart.
 ///
 /// This is a **decision**, not a UI action and not a conflict
-/// resolution. `ConflictResolver` (later) is what may turn
-/// `.conflict` into `useLocal` / `useRemote`.
+/// resolution. `ConflictResolver` is what may turn `.conflict`
+/// into `useLocal` / `useRemote` (never automatically, and never
+/// for a completed work order or an `EditRequest`).
 enum ReconciliationResult: String, CaseIterable, Hashable, Sendable, Codable {
     /// Local and remote represent the same state. Do not rewrite local.
     case noChange

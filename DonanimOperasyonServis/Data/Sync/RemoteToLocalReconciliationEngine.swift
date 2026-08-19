@@ -46,8 +46,20 @@ actor RemoteToLocalReconciliationEngine: Reconciling {
             entityId: request.entityId
         )
         let active = operations.filter { $0.status != .succeeded }
-        let localRecord = try await load(request, from: local)
-        let remoteRecord = try await load(request, from: remote)
+        let localRecord = try await SyncEntityRecordBridge.load(
+            entityType: request.entityType,
+            entityId: request.entityId,
+            parentId: request.parentId,
+            from: local,
+            missingParentReason: "reconciliation.payloadReferenceMissing"
+        )
+        let remoteRecord = try await SyncEntityRecordBridge.load(
+            entityType: request.entityType,
+            entityId: request.entityId,
+            parentId: request.parentId,
+            from: remote,
+            missingParentReason: "reconciliation.payloadReferenceMissing"
+        )
 
         var versions = request.versions
         if versions.localVersion == nil {
@@ -98,28 +110,7 @@ actor RemoteToLocalReconciliationEngine: Reconciling {
     // MARK: - Apply
 
     private func applyRemote(_ record: ReconciledRecord) async throws {
-        switch record {
-        case .user(let value):
-            try await local.users.save(value)
-        case .customer(let value):
-            try await local.customers.save(value)
-        case .workOrder(let value):
-            try await local.workOrders.save(value)
-        case .workOrderNote(let value):
-            try await local.notes.save(value)
-        case .workOrderPhoto(let value):
-            try await local.photos.save(value)
-        case .workOrderLocation(let value):
-            try await local.locations.save(value)
-        case .workOrderStatusHistory(let value):
-            try await local.statusHistory.append(value)
-        case .signature(let value):
-            try await local.signatures.save(value)
-        case .editRequest(let value):
-            try await local.editRequests.save(value)
-        case .notification(let value):
-            try await local.notifications.save(value)
-        }
+        try await SyncEntityRecordBridge.apply(record, to: local)
     }
 
     private func persistConflict(
@@ -141,110 +132,6 @@ actor RemoteToLocalReconciliationEngine: Reconciling {
         )
         try await conflicts.save(conflict)
         return conflict
-    }
-
-    // MARK: - Load
-
-    private func load(
-        _ request: ReconciliationRequest,
-        from repos: SyncEntityRepositories
-    ) async throws -> ReconciledRecord? {
-        do {
-            return try await loadPresent(request, from: repos)
-        } catch let error as DomainError {
-            if case .notFound = error { return nil }
-            throw error
-        }
-    }
-
-    private func loadPresent(
-        _ request: ReconciliationRequest,
-        from repos: SyncEntityRepositories
-    ) async throws -> ReconciledRecord {
-        switch request.entityType {
-        case .user:
-            return .user(try await repos.users.fetch(id: UserID(request.entityId)))
-        case .customer:
-            return .customer(try await repos.customers.fetch(id: CustomerID(request.entityId)))
-        case .workOrder:
-            return .workOrder(try await repos.workOrders.fetch(id: WorkOrderID(request.entityId)))
-        case .editRequest:
-            return .editRequest(try await repos.editRequests.fetch(id: EditRequestID(request.entityId)))
-        case .workOrderNote:
-            return .workOrderNote(
-                try await requireChild(
-                    try await repos.notes.list(for: parentWorkOrderId(request)),
-                    id: request.entityId,
-                    entity: "WorkOrderNote",
-                    key: \.id
-                )
-            )
-        case .workOrderPhoto:
-            return .workOrderPhoto(
-                try await requireChild(
-                    try await repos.photos.list(for: parentWorkOrderId(request)),
-                    id: request.entityId,
-                    entity: "WorkOrderPhoto",
-                    key: \.id
-                )
-            )
-        case .workOrderLocation:
-            return .workOrderLocation(
-                try await requireChild(
-                    try await repos.locations.list(for: parentWorkOrderId(request)),
-                    id: request.entityId,
-                    entity: "WorkOrderLocation",
-                    key: \.id
-                )
-            )
-        case .workOrderStatusHistory:
-            return .workOrderStatusHistory(
-                try await requireChild(
-                    try await repos.statusHistory.list(for: parentWorkOrderId(request)),
-                    id: request.entityId,
-                    entity: "WorkOrderStatusHistory",
-                    key: \.id
-                )
-            )
-        case .signature:
-            return .signature(
-                try await requireChild(
-                    try await repos.signatures.list(for: parentWorkOrderId(request)),
-                    id: request.entityId,
-                    entity: "Signature",
-                    key: \.id
-                )
-            )
-        case .notification:
-            let parent = try parentId(request, reason: "reconciliation.payloadReferenceMissing")
-            let items = try await repos.notifications.list(for: UserID(parent), unreadOnly: false)
-            guard let found = items.first(where: { $0.id.rawValue == request.entityId }) else {
-                throw DomainError.notFound(entity: "AppNotification", id: request.entityId)
-            }
-            return .notification(found)
-        }
-    }
-
-    private func parentWorkOrderId(_ request: ReconciliationRequest) throws -> WorkOrderID {
-        WorkOrderID(try parentId(request, reason: "reconciliation.payloadReferenceMissing"))
-    }
-
-    private func parentId(_ request: ReconciliationRequest, reason: String) throws -> String {
-        let raw = request.parentId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !raw.isEmpty else { throw DomainError.invalidData(reason: reason) }
-        return raw
-    }
-
-    private func requireChild<T>(
-        _ items: [T],
-        id: String,
-        entity: String,
-        key: KeyPath<T, String>
-    ) throws -> T {
-        guard let found = items.first(where: { $0[keyPath: key] == id }) else {
-            throw DomainError.notFound(entity: entity, id: id)
-        }
-        return found
     }
 
     private func equals(_ lhs: ReconciledRecord?, _ rhs: ReconciledRecord?) -> Bool {

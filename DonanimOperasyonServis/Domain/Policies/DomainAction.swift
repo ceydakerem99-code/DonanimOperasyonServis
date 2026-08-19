@@ -28,6 +28,7 @@ enum DomainAction: Hashable, Sendable {
     case viewServiceReport
     case approveEditRequest
     case rejectEditRequest
+    case resolveSyncConflict
 
     // MARK: Technician
     case viewOwnAssignedWorkOrders
