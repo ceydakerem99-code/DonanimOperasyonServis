@@ -9,10 +9,9 @@ import SwiftData
 /// via constructor injection — they should never reach into
 /// `DIContainer` at call sites.
 ///
-/// Phase 4 keeps **both** local and remote repository families
-/// wired, without composing them. Phase 5B adds a local SwiftData
-/// sync queue. `SyncManager` (Phase 5C) will drain that queue
-/// toward Firebase. Until then:
+/// Phase 5C wires `SyncManager` to drain the local queue toward
+/// the Firebase repositories. Reconciliation (remote → local) is
+/// Phase 5D and is not performed here.
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
 ///   the SwiftData implementations used by the running app.
@@ -49,6 +48,7 @@ final class DIContainer: Sendable {
     let notificationRepository: any NotificationRepository
     let syncOperationRepository: any SyncOperationRepository
     let syncConflictRepository: any SyncConflictRepository
+    let syncManager: any SyncManaging
 
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
@@ -134,15 +134,45 @@ final class DIContainer: Sendable {
         self.syncOperationRepository            = SwiftDataSyncOperationRepository(store: store)
         self.syncConflictRepository             = SwiftDataSyncConflictRepository(store: store)
 
-        self.remoteUserRepository                     = FirebaseUserRepository(dataSource: firestoreDataSource)
-        self.remoteCustomerRepository                 = FirebaseCustomerRepository(dataSource: firestoreDataSource)
-        self.remoteWorkOrderRepository                = FirebaseWorkOrderRepository(dataSource: firestoreDataSource)
-        self.remoteWorkOrderNoteRepository            = FirebaseWorkOrderNoteRepository(dataSource: firestoreDataSource)
-        self.remoteWorkOrderPhotoRepository           = FirebaseWorkOrderPhotoRepository(dataSource: firestoreDataSource)
-        self.remoteWorkOrderLocationRepository        = FirebaseWorkOrderLocationRepository(dataSource: firestoreDataSource)
-        self.remoteWorkOrderStatusHistoryRepository   = FirebaseWorkOrderStatusHistoryRepository(dataSource: firestoreDataSource)
-        self.remoteSignatureRepository                = FirebaseSignatureRepository(dataSource: firestoreDataSource)
-        self.remoteEditRequestRepository              = FirebaseEditRequestRepository(dataSource: firestoreDataSource)
-        self.remoteNotificationRepository             = FirebaseNotificationRepository(dataSource: firestoreDataSource)
+        let localEntities = SyncEntityRepositories(
+            users: self.userRepository,
+            customers: self.customerRepository,
+            workOrders: self.workOrderRepository,
+            notes: self.workOrderNoteRepository,
+            photos: self.workOrderPhotoRepository,
+            locations: self.workOrderLocationRepository,
+            statusHistory: self.workOrderStatusHistoryRepository,
+            signatures: self.signatureRepository,
+            editRequests: self.editRequestRepository,
+            notifications: self.notificationRepository
+        )
+        let remoteEntities = SyncEntityRepositories(
+            users: FirebaseUserRepository(dataSource: firestoreDataSource),
+            customers: FirebaseCustomerRepository(dataSource: firestoreDataSource),
+            workOrders: FirebaseWorkOrderRepository(dataSource: firestoreDataSource),
+            notes: FirebaseWorkOrderNoteRepository(dataSource: firestoreDataSource),
+            photos: FirebaseWorkOrderPhotoRepository(dataSource: firestoreDataSource),
+            locations: FirebaseWorkOrderLocationRepository(dataSource: firestoreDataSource),
+            statusHistory: FirebaseWorkOrderStatusHistoryRepository(dataSource: firestoreDataSource),
+            signatures: FirebaseSignatureRepository(dataSource: firestoreDataSource),
+            editRequests: FirebaseEditRequestRepository(dataSource: firestoreDataSource),
+            notifications: FirebaseNotificationRepository(dataSource: firestoreDataSource)
+        )
+        self.remoteUserRepository                     = remoteEntities.users
+        self.remoteCustomerRepository                 = remoteEntities.customers
+        self.remoteWorkOrderRepository                = remoteEntities.workOrders
+        self.remoteWorkOrderNoteRepository            = remoteEntities.notes
+        self.remoteWorkOrderPhotoRepository           = remoteEntities.photos
+        self.remoteWorkOrderLocationRepository        = remoteEntities.locations
+        self.remoteWorkOrderStatusHistoryRepository   = remoteEntities.statusHistory
+        self.remoteSignatureRepository                = remoteEntities.signatures
+        self.remoteEditRequestRepository              = remoteEntities.editRequests
+        self.remoteNotificationRepository             = remoteEntities.notifications
+        self.syncManager = LocalToRemoteSyncManager(
+            queue: self.syncOperationRepository,
+            conflicts: self.syncConflictRepository,
+            local: localEntities,
+            remote: remoteEntities
+        )
     }
 }

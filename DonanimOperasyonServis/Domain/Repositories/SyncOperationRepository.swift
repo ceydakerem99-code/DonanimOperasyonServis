@@ -38,4 +38,9 @@ protocol SyncOperationRepository: Sendable {
     /// when to run this.
     func deleteCompleted() async throws
     func countPending(now: Date) async throws -> Int
+    /// Moves a `.failed` row back to `.pending` so
+    /// `SyncStatusStateMachine` can take `pending → inProgress`.
+    /// This reset is **not** a state-machine transition (see
+    /// `SyncStatus.isTerminal`). No-op when already `.pending`.
+    func prepareRetry(id: SyncOperationID) async throws
 }

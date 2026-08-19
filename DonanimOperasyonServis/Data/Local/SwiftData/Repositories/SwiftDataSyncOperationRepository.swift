@@ -53,4 +53,8 @@ struct SwiftDataSyncOperationRepository: SyncOperationRepository {
     func countPending(now: Date) async throws -> Int {
         try await store.countPendingSyncOperations(now: now)
     }
+
+    func prepareRetry(id: SyncOperationID) async throws {
+        try await store.prepareSyncOperationRetry(id: id.rawValue)
+    }
 }

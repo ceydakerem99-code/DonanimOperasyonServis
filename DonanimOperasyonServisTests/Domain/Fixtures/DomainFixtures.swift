@@ -255,4 +255,53 @@ enum DomainFixtures {
             decisionNote: nil
         )
     }
+
+    // MARK: - Customer / Notification / History
+
+    static func customer(
+        id: CustomerID = CustomerID("cust-1"),
+        name: String = "Migros Bahçelievler",
+        createdByUserId: UserID = UserID("user-operator-1")
+    ) -> Customer {
+        Customer(
+            id: id,
+            name: name,
+            address: "Bağdat Cad. No:1",
+            createdByUserId: createdByUserId,
+            createdAt: referenceDate,
+            updatedAt: referenceDate
+        )
+    }
+
+    static func notification(
+        id: NotificationID = NotificationID("notif-1"),
+        recipientUserId: UserID = UserID("user-technician-1"),
+        type: NotificationType = .workOrderAssigned
+    ) -> AppNotification {
+        AppNotification(
+            id: id,
+            recipientUserId: recipientUserId,
+            type: type,
+            title: "İş emri atandı",
+            body: "Yeni bir iş emri atandı.",
+            createdAt: referenceDate
+        )
+    }
+
+    static func statusHistory(
+        id: String = "hist-1",
+        workOrderId: WorkOrderID = WorkOrderID("wo-1"),
+        fromStatus: WorkOrderStatus? = nil,
+        toStatus: WorkOrderStatus = .assigned,
+        actorUserId: UserID = UserID("user-operator-1")
+    ) -> WorkOrderStatusHistory {
+        WorkOrderStatusHistory(
+            id: id,
+            workOrderId: workOrderId,
+            fromStatus: fromStatus,
+            toStatus: toStatus,
+            actorUserId: actorUserId,
+            occurredAt: referenceDate
+        )
+    }
 }

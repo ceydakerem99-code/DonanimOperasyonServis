@@ -399,6 +399,27 @@ actor LocalPersistence {
         return .inserted(operation)
     }
 
+    /// Retry reset: `.failed` → `.pending` without going through
+    /// `SyncStatusStateMachine` (documented in `SyncStatus.isTerminal`).
+    func prepareSyncOperationRetry(id: String) throws {
+        guard let model = try firstModel(
+            SyncOperationModel.self,
+            where: #Predicate { $0.id == id }
+        ) else {
+            throw DomainError.notFound(entity: "SyncOperation", id: id)
+        }
+        let current = try requireDecoded(model.toDomain(), entity: "SyncOperation")
+        switch current.status {
+        case .failed:
+            model.statusRaw = SyncStatus.pending.rawValue
+            try modelContext.save()
+        case .pending:
+            return
+        case .inProgress, .succeeded, .conflict:
+            throw DomainError.invalidData(reason: "syncOperation.prepareRetryRequiresFailed")
+        }
+    }
+
     func updateSyncOperation(_ operation: SyncOperation) throws {
         let rawId = operation.id.rawValue
         guard let existing = try firstModel(

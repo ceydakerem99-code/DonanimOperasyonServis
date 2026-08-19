@@ -25,4 +25,17 @@ enum SyncError: Error, Hashable, Sendable {
 
     /// Catch-all. Carries a diagnostic string for logs.
     case unknown(reason: String)
+
+    /// Stable, code-first string stored on `SyncOperation.errorMessage`.
+    var diagnosticMessage: String {
+        switch self {
+        case .networkUnavailable: return "networkUnavailable"
+        case .unauthorized:       return "unauthorized"
+        case .notFound:           return "notFound"
+        case .invalidPayload:     return "invalidPayload"
+        case .conflict:           return "conflict"
+        case .serverError:        return "serverError"
+        case .unknown(let reason): return "unknown:\(reason)"
+        }
+    }
 }

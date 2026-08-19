@@ -55,6 +55,109 @@ actor InMemoryStatusHistoryRepository: WorkOrderStatusHistoryRepository {
     func all() -> [WorkOrderStatusHistory] { entries }
 }
 
+actor InMemoryUserRepository: UserRepository {
+    private var storage: [UserID: User] = [:]
+
+    init(seed: [User] = []) {
+        for user in seed { storage[user.id] = user }
+    }
+
+    func fetch(id: UserID) async throws -> User {
+        guard let user = storage[id] else {
+            throw DomainError.notFound(entity: "User", id: id.rawValue)
+        }
+        return user
+    }
+
+    func findByEmail(_ email: String) async throws -> User? {
+        storage.values.first { $0.email == email }
+    }
+
+    func list(role: UserRole?, isActive: Bool?) async throws -> [User] {
+        storage.values.filter { user in
+            if let role, user.role != role { return false }
+            if let isActive, user.isActive != isActive { return false }
+            return true
+        }
+    }
+
+    func save(_ user: User) async throws {
+        storage[user.id] = user
+    }
+
+    func delete(id: UserID) async throws {
+        storage.removeValue(forKey: id)
+    }
+
+    func snapshot(_ id: UserID) -> User? { storage[id] }
+}
+
+actor InMemoryCustomerRepository: CustomerRepository {
+    private var storage: [CustomerID: Customer] = [:]
+    var transformOnSave: (@Sendable (Customer) -> Customer)?
+
+    init(seed: [Customer] = []) {
+        for customer in seed { storage[customer.id] = customer }
+    }
+
+    func fetch(id: CustomerID) async throws -> Customer {
+        guard let customer = storage[id] else {
+            throw DomainError.notFound(entity: "Customer", id: id.rawValue)
+        }
+        return customer
+    }
+
+    func list(searchText: String?) async throws -> [Customer] {
+        Array(storage.values)
+    }
+
+    func save(_ customer: Customer) async throws {
+        storage[customer.id] = transformOnSave?(customer) ?? customer
+    }
+
+    func delete(id: CustomerID) async throws {
+        storage.removeValue(forKey: id)
+    }
+
+    func snapshot(_ id: CustomerID) -> Customer? { storage[id] }
+
+    func setTransformOnSave(_ transform: (@Sendable (Customer) -> Customer)?) {
+        transformOnSave = transform
+    }
+}
+
+actor InMemoryNotificationRepository: NotificationRepository {
+    private var storage: [NotificationID: AppNotification] = [:]
+
+    init(seed: [AppNotification] = []) {
+        for item in seed { storage[item.id] = item }
+    }
+
+    func list(for recipientId: UserID, unreadOnly: Bool) async throws -> [AppNotification] {
+        storage.values.filter { item in
+            guard item.recipientUserId == recipientId else { return false }
+            if unreadOnly { return !item.isRead }
+            return true
+        }
+    }
+
+    func save(_ notification: AppNotification) async throws {
+        storage[notification.id] = notification
+    }
+
+    func markAsRead(id: NotificationID) async throws {
+        guard var item = storage[id] else {
+            throw DomainError.notFound(entity: "AppNotification", id: id.rawValue)
+        }
+        item.isRead = true
+        storage[id] = item
+    }
+
+    func delete(id: NotificationID) async throws {
+        storage.removeValue(forKey: id)
+    }
+}
+
 actor InMemoryNoteRepository: WorkOrderNoteRepository {
     private var notes: [String: WorkOrderNote] = [:]
 
