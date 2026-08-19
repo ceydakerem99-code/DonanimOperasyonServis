@@ -114,7 +114,7 @@ final class CompletionRequirementsTests: XCTestCase {
     private func assertMissing(
         _ requirement: MissingRequirement,
         in context: CompletionContext,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let result = CompletionRequirements.check(context)

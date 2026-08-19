@@ -1,0 +1,395 @@
+import Foundation
+import SwiftData
+
+/// Central, actor-isolated wrapper around the app's SwiftData
+/// `ModelContext`.
+///
+/// Every persistence read and write in the app funnels through
+/// `LocalPersistence`. Doing so has two important properties:
+///
+/// 1. **Concurrency safety.** `ModelContext` is not `Sendable`;
+///    exposing it directly to callers would require pervasive
+///    `@MainActor` isolation or unsafe workarounds. Wrapping it in
+///    a single `@ModelActor` gives us a natural serial executor for
+///    all SwiftData work.
+///
+/// 2. **Consistency.** All Data-layer repositories share the same
+///    underlying `ModelContext`, so a save from one repository is
+///    immediately visible to the next repository's fetch — no
+///    cross-context cache-refresh dance. This matches the Phase 3
+///    requirement that a work order and its status history stay
+///    consistent even though they are written through separate
+///    repository types.
+///
+/// The API is intentionally domain-facing: every method takes and
+/// returns Domain types. Domain never sees a `@Model` class or a
+/// `ModelContext`.
+@ModelActor
+actor LocalPersistence {
+
+    // MARK: - User
+
+    func fetchUser(id: String) throws -> User? {
+        let model = try firstModel(UserModel.self, where: #Predicate { $0.id == id })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "User") }
+    }
+
+    func findUserByEmail(_ email: String) throws -> User? {
+        let model = try firstModel(UserModel.self, where: #Predicate { $0.email == email })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "User") }
+    }
+
+    func listUsers() throws -> [User] {
+        try modelContext
+            .fetch(FetchDescriptor<UserModel>(sortBy: [SortDescriptor(\.fullName)]))
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertUser(_ user: User) throws {
+        let rawId = user.id.rawValue
+        if let existing = try firstModel(UserModel.self, where: #Predicate { $0.id == rawId }) {
+            existing.apply(domain: user)
+        } else {
+            modelContext.insert(UserModel(domain: user))
+        }
+        try modelContext.save()
+    }
+
+    func deleteUser(id: String) throws {
+        guard let model = try firstModel(UserModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - Customer
+
+    func fetchCustomer(id: String) throws -> Customer? {
+        try firstModel(CustomerModel.self, where: #Predicate { $0.id == id })?.toDomain()
+    }
+
+    func listCustomers(searchText: String?) throws -> [Customer] {
+        let all = try modelContext.fetch(
+            FetchDescriptor<CustomerModel>(sortBy: [SortDescriptor(\.name)])
+        )
+        guard let raw = searchText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(), !raw.isEmpty
+        else {
+            return all.map { $0.toDomain() }
+        }
+        return all
+            .filter { $0.name.lowercased().contains(raw) }
+            .map { $0.toDomain() }
+    }
+
+    func upsertCustomer(_ customer: Customer) throws {
+        let rawId = customer.id.rawValue
+        if let existing = try firstModel(CustomerModel.self, where: #Predicate { $0.id == rawId }) {
+            existing.apply(domain: customer)
+        } else {
+            modelContext.insert(CustomerModel(domain: customer))
+        }
+        try modelContext.save()
+    }
+
+    func deleteCustomer(id: String) throws {
+        guard let model = try firstModel(CustomerModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - WorkOrder
+
+    func fetchWorkOrder(id: String) throws -> WorkOrder? {
+        let model = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == id })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "WorkOrder") }
+    }
+
+    func listWorkOrders(filter: WorkOrderFilter) throws -> [WorkOrder] {
+        let all = try modelContext
+            .fetch(FetchDescriptor<WorkOrderModel>(sortBy: [SortDescriptor(\.scheduledDate)]))
+            .compactMap { $0.toDomain() }
+        return all.filter { order in
+            if let value = filter.status,               order.status != value               { return false }
+            if let value = filter.priority,             order.priority != value             { return false }
+            if let value = filter.workType,             order.workType != value             { return false }
+            if let value = filter.assignedTechnicianId, order.assignedTechnicianId != value { return false }
+            if let value = filter.createdByUserId,      order.createdByUserId != value      { return false }
+            if let value = filter.customerId,           order.customerId != value           { return false }
+            if let from = filter.scheduledFrom, order.scheduledDate < from { return false }
+            if let to   = filter.scheduledTo,   order.scheduledDate > to   { return false }
+            return true
+        }
+    }
+
+    func upsertWorkOrder(_ workOrder: WorkOrder) throws {
+        let rawId = workOrder.id.rawValue
+        if let existing = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == rawId }) {
+            existing.apply(domain: workOrder)
+        } else {
+            modelContext.insert(WorkOrderModel(domain: workOrder))
+        }
+        try modelContext.save()
+    }
+
+    func deleteWorkOrder(id: String) throws {
+        guard let model = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - WorkOrder children (notes / photos / locations / history / signatures)
+
+    func listNotes(workOrderId: String) throws -> [WorkOrderNote] {
+        try modelContext
+            .fetch(FetchDescriptor<WorkOrderNoteModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .map { $0.toDomain() }
+    }
+
+    func upsertNote(_ note: WorkOrderNote) throws {
+        let noteId = note.id
+        let woId   = note.workOrderId.rawValue
+        if let existing = try firstModel(WorkOrderNoteModel.self, where: #Predicate { $0.id == noteId }) {
+            existing.apply(domain: note)
+        } else {
+            let model = WorkOrderNoteModel(domain: note)
+            model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+            modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
+    func deleteNote(id: String) throws {
+        guard let model = try firstModel(WorkOrderNoteModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    func listPhotos(workOrderId: String) throws -> [WorkOrderPhoto] {
+        try modelContext
+            .fetch(FetchDescriptor<WorkOrderPhotoModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.capturedAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertPhoto(_ photo: WorkOrderPhoto) throws {
+        let photoId = photo.id
+        let woId    = photo.workOrderId.rawValue
+        if let existing = try firstModel(WorkOrderPhotoModel.self, where: #Predicate { $0.id == photoId }) {
+            existing.apply(domain: photo)
+        } else {
+            let model = WorkOrderPhotoModel(domain: photo)
+            model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+            modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
+    func deletePhoto(id: String) throws {
+        guard let model = try firstModel(WorkOrderPhotoModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    func listLocations(workOrderId: String) throws -> [WorkOrderLocation] {
+        try modelContext
+            .fetch(FetchDescriptor<WorkOrderLocationModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.capturedAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func insertLocation(_ location: WorkOrderLocation) throws {
+        let woId = location.workOrderId.rawValue
+        let model = WorkOrderLocationModel(domain: location)
+        model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+        modelContext.insert(model)
+        try modelContext.save()
+    }
+
+    func listStatusHistory(workOrderId: String) throws -> [WorkOrderStatusHistory] {
+        try modelContext
+            .fetch(FetchDescriptor<WorkOrderStatusHistoryModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.occurredAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func appendStatusHistory(_ entry: WorkOrderStatusHistory) throws {
+        let woId = entry.workOrderId.rawValue
+        let model = WorkOrderStatusHistoryModel(domain: entry)
+        model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+        modelContext.insert(model)
+        try modelContext.save()
+    }
+
+    func listSignatures(workOrderId: String) throws -> [Signature] {
+        try modelContext
+            .fetch(FetchDescriptor<SignatureModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.capturedAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertSignature(_ signature: Signature) throws {
+        let sigId = signature.id
+        let woId  = signature.workOrderId.rawValue
+        if let existing = try firstModel(SignatureModel.self, where: #Predicate { $0.id == sigId }) {
+            existing.apply(domain: signature)
+        } else {
+            let model = SignatureModel(domain: signature)
+            model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+            modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
+    func deleteSignature(id: String) throws {
+        guard let model = try firstModel(SignatureModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - EditRequest
+
+    func fetchEditRequest(id: String) throws -> EditRequest? {
+        let model = try firstModel(EditRequestModel.self, where: #Predicate { $0.id == id })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "EditRequest") }
+    }
+
+    func listEditRequests(workOrderId: String) throws -> [EditRequest] {
+        try modelContext
+            .fetch(FetchDescriptor<EditRequestModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func listEditRequests(statusRaw: String) throws -> [EditRequest] {
+        try modelContext
+            .fetch(FetchDescriptor<EditRequestModel>(
+                predicate: #Predicate { $0.statusRaw == statusRaw },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertEditRequest(_ request: EditRequest) throws {
+        let requestId = request.id.rawValue
+        let woId      = request.workOrderId.rawValue
+        if let existing = try firstModel(EditRequestModel.self, where: #Predicate { $0.id == requestId }) {
+            existing.apply(domain: request)
+        } else {
+            let model = EditRequestModel(domain: request)
+            model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == woId })
+            modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
+    // MARK: - Notification
+
+    func listNotifications(recipientUserId: String, unreadOnly: Bool) throws -> [AppNotification] {
+        let base = try modelContext.fetch(
+            FetchDescriptor<NotificationModel>(
+                predicate: #Predicate { $0.recipientUserId == recipientUserId },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+        )
+        let filtered = unreadOnly ? base.filter { !$0.isRead } : base
+        return filtered.compactMap { $0.toDomain() }
+    }
+
+    func upsertNotification(_ notification: AppNotification) throws {
+        let notifId = notification.id.rawValue
+        if let existing = try firstModel(NotificationModel.self, where: #Predicate { $0.id == notifId }) {
+            existing.apply(domain: notification)
+        } else {
+            modelContext.insert(NotificationModel(domain: notification))
+        }
+        try modelContext.save()
+    }
+
+    func markNotificationAsRead(id: String) throws {
+        guard let model = try firstModel(NotificationModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        model.isRead = true
+        try modelContext.save()
+    }
+
+    func deleteNotification(id: String) throws {
+        guard let model = try firstModel(NotificationModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - Local session (auth surface)
+
+    func currentSessionUserId() throws -> String? {
+        try loadSessionModel()?.currentUserId
+    }
+
+    func setCurrentSessionUserId(_ userId: String?, at timestamp: Date) throws {
+        if let existing = try loadSessionModel() {
+            existing.currentUserId = userId
+            existing.updatedAt = timestamp
+        } else {
+            modelContext.insert(
+                LocalSessionModel(currentUserId: userId, updatedAt: timestamp)
+            )
+        }
+        try modelContext.save()
+    }
+
+    private func loadSessionModel() throws -> LocalSessionModel? {
+        let singletonId = LocalSessionModel.singletonId
+        return try firstModel(
+            LocalSessionModel.self,
+            where: #Predicate { $0.id == singletonId }
+        )
+    }
+
+    // MARK: - Small internal helpers
+
+    /// Fetches at most one model matching the predicate. Encapsulates
+    /// the common "descriptor + fetchLimit=1 + first" idiom that
+    /// otherwise clutters every call site.
+    private func firstModel<M: PersistentModel>(
+        _ type: M.Type,
+        where predicate: Predicate<M>
+    ) throws -> M? {
+        var descriptor = FetchDescriptor<M>(predicate: predicate)
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
+    }
+
+    /// Throws `DomainError.invalidData` when a persisted row decodes
+    /// to `nil` (e.g. an unknown enum raw value on disk).
+    private func requireDecoded<T>(
+        _ value: T?,
+        entity: String,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) throws -> T {
+        guard let value else {
+            throw DomainError.invalidData(reason: "swiftData.\(entity).decodeFailed")
+        }
+        return value
+    }
+}

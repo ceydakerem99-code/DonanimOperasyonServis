@@ -30,5 +30,5 @@ struct RootView: View {
 
 #Preview {
     RootView()
-        .environment(\.diContainer, .live())
+        .environment(\.diContainer, .mock())
 }
