@@ -37,16 +37,8 @@ struct RootView: View {
 
     @ViewBuilder
     private func authenticatedRoot(for user: User, session: AuthSessionController) -> some View {
-        let logout: () -> Void = {
+        RoleAppShellView(user: user) {
             Task { await session.signOut() }
-        }
-        switch user.role {
-        case .admin:
-            AdminRootPlaceholder(user: user, onLogout: logout)
-        case .operator:
-            OperatorRootPlaceholder(user: user, onLogout: logout)
-        case .technician:
-            TechnicianRootPlaceholder(user: user, onLogout: logout)
         }
     }
 }

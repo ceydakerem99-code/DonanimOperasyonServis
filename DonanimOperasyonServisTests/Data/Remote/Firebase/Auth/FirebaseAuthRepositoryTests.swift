@@ -8,7 +8,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
         let authService = FakeFirebaseAuthService()
         let user = DomainFixtures.adminUser(id: UserID("firebase-uid-1"))
         try await harness.users.save(user)
-        await authService.register(email: user.email, uid: user.id.rawValue)
+        authService.register(email: user.email, uid: user.id.rawValue)
         let localStore = try SwiftDataTestHarness()
         let repository = FirebaseAuthRepository(
             authService: authService,
@@ -28,7 +28,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
         let harness = FirebaseTestHarness()
         let authService = FakeFirebaseAuthService()
         let user = DomainFixtures.adminUser(id: UserID("missing-doc-uid"))
-        await authService.register(email: user.email, uid: user.id.rawValue)
+        authService.register(email: user.email, uid: user.id.rawValue)
         let localStore = try SwiftDataTestHarness()
         let repository = FirebaseAuthRepository(
             authService: authService,
@@ -57,7 +57,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
         let authService = FakeFirebaseAuthService()
         let user = DomainFixtures.operatorUser(id: UserID("logout-uid"))
         try await harness.users.save(user)
-        await authService.register(email: user.email, uid: user.id.rawValue)
+        authService.register(email: user.email, uid: user.id.rawValue)
         let localStore = try SwiftDataTestHarness()
         let customer = DomainFixtures.customer()
         try await localStore.customers.save(customer)
