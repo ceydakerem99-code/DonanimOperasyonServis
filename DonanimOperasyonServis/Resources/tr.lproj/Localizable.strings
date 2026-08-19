@@ -1,0 +1,16 @@
+/*
+  Localizable.strings (tr)
+  Donanım Operasyon ve Servis
+
+  Faz 0 iskeleti. Sonraki fazlarda uygulama içi tüm metinler bu dosyaya
+  eklenecek ve `String(localized:)` üzerinden okunacaktır.
+*/
+
+"app.name" = "Donanım Operasyon ve Servis";
+"app.name.short" = "Donanım Operasyon";
+"phase0.welcome.title" = "Donanım Operasyon ve Servis";
+"phase0.welcome.subtitle" = "Faz 0 — proje iskeleti hazır.";
+
+"role.admin" = "Admin";
+"role.operator" = "Operasyon Yetkilisi";
+"role.technician" = "Teknisyen";
