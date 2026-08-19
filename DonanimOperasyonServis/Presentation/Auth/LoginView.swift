@@ -43,18 +43,15 @@ struct LoginView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.s) {
-            Image(systemName: "wrench.and.screwdriver.fill")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(AppColor.brandPrimary)
-            Text("Donanım Operasyon ve Servis")
-                .font(AppFont.title)
-                .foregroundStyle(AppColor.primaryText)
+        VStack(spacing: AppSpacing.m) {
+            DOPSBrandMark(logoSize: 96, showsFullName: true)
             Text("Kurumsal hesabınızla giriş yapın.")
                 .font(AppFont.body)
                 .foregroundStyle(AppColor.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.bottom, AppSpacing.s)
     }
 
