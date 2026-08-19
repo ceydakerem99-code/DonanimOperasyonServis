@@ -209,6 +209,46 @@ final class AuthSessionControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .unauthenticated)
     }
 
+    func testSignOutAfterLoginWithAuthObserverDoesNotRestoreSession() async throws {
+        let harness = try SwiftDataTestHarness()
+        let (controller, auth) = makeController(store: harness.store, users: harness.users)
+        let user = DomainFixtures.operatorUser()
+        try await harness.users.save(user)
+        auth.seed(user: user, password: "secret")
+        await controller.start()
+
+        await controller.signIn(email: user.email, password: "secret")
+        guard case .authenticated = controller.state else {
+            return XCTFail("expected authenticated before logout")
+        }
+
+        await controller.signOut()
+        XCTAssertEqual(controller.state, .unauthenticated)
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(controller.state, .unauthenticated)
+        let sessionId = try await harness.store.currentSessionUserId()
+        XCTAssertNil(sessionId)
+    }
+
+    func testSignOutPreservesBusinessDataWithAuthObserverActive() async throws {
+        let harness = try SwiftDataTestHarness()
+        let (controller, auth) = makeController(store: harness.store, users: harness.users)
+        let user = DomainFixtures.technicianUser()
+        let customer = DomainFixtures.customer()
+        try await harness.users.save(user)
+        try await harness.customers.save(customer)
+        auth.seed(user: user, password: "secret")
+        await controller.start()
+        await controller.signIn(email: user.email, password: "secret")
+        await controller.signOut()
+
+        let storedCustomer = try await harness.customers.fetch(id: customer.id)
+        XCTAssertEqual(storedCustomer, customer)
+        let pending = try await harness.syncOperations.countPending(now: Date())
+        XCTAssertGreaterThanOrEqual(pending, 0)
+    }
+
     func testUnauthorizedUserActionStillBlockedByRoleAccessPolicy() {
         let technician = DomainFixtures.technicianUser()
         XCTAssertFalse(

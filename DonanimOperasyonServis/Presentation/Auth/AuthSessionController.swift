@@ -13,6 +13,7 @@ final class AuthSessionController {
 
     private let authRepository: any AuthRepository
     private var observationTask: Task<Void, Never>?
+    private var restoreSessionTask: Task<Void, Never>?
 
     init(authRepository: any AuthRepository) {
         self.authRepository = authRepository
@@ -24,16 +25,30 @@ final class AuthSessionController {
     }
 
     func restoreSession() async {
-        state = .checkingSession
+        restoreSessionTask?.cancel()
+        restoreSessionTask = Task { [weak self] in
+            await self?.performRestoreSession(showChecking: true)
+        }
+        await restoreSessionTask?.value
+    }
+
+    private func performRestoreSession(showChecking: Bool) async {
+        if showChecking, !Task.isCancelled {
+            state = .checkingSession
+        }
         do {
             if let user = try await authRepository.restoreSession() {
+                guard !Task.isCancelled else { return }
                 state = .authenticated(user)
             } else {
+                guard !Task.isCancelled else { return }
                 state = .unauthenticated
             }
         } catch let error as DomainError {
+            guard !Task.isCancelled else { return }
             state = .authenticationError(error)
         } catch {
+            guard !Task.isCancelled else { return }
             state = .authenticationError(.authenticationFailed(.unknown))
         }
     }
@@ -55,6 +70,8 @@ final class AuthSessionController {
     }
 
     func signOut() async {
+        restoreSessionTask?.cancel()
+        restoreSessionTask = nil
         do {
             try await authRepository.signOut()
             state = .unauthenticated
@@ -103,8 +120,17 @@ final class AuthSessionController {
     private func handleAuthEvent(_ event: AuthSessionEvent) async {
         switch event {
         case .signedIn:
-            await restoreSession()
+            guard case .authenticated = state else {
+                restoreSessionTask?.cancel()
+                restoreSessionTask = Task { [weak self] in
+                    await self?.performRestoreSession(showChecking: true)
+                }
+                await restoreSessionTask?.value
+                return
+            }
         case .signedOut:
+            restoreSessionTask?.cancel()
+            restoreSessionTask = nil
             state = .unauthenticated
         }
     }

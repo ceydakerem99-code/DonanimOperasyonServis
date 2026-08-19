@@ -7,7 +7,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if let authSession {
-                routedContent(for: authSession)
+                AuthRoutingView(session: authSession)
             } else {
                 LoadingView(message: "Oturum kontrol ediliyor...")
             }
@@ -20,9 +20,14 @@ struct RootView: View {
             }
         }
     }
+}
 
-    @ViewBuilder
-    private func routedContent(for session: AuthSessionController) -> some View {
+/// Observes `AuthSessionController.state` via `@Bindable` so logout
+/// reliably swaps the role shell for `LoginView`.
+private struct AuthRoutingView: View {
+    @Bindable var session: AuthSessionController
+
+    var body: some View {
         switch session.state {
         case .checkingSession:
             LoadingView(message: "Oturum kontrol ediliyor...")
@@ -31,14 +36,9 @@ struct RootView: View {
             LoginView(session: session)
 
         case .authenticated(let user):
-            authenticatedRoot(for: user, session: session)
-        }
-    }
-
-    @ViewBuilder
-    private func authenticatedRoot(for user: User, session: AuthSessionController) -> some View {
-        RoleAppShellView(user: user) {
-            Task { await session.signOut() }
+            RoleAppShellView(user: user) {
+                Task { await session.signOut() }
+            }
         }
     }
 }
