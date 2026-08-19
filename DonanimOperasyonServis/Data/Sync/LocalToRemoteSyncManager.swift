@@ -6,6 +6,11 @@ import Foundation
 /// cannot interleave: the second caller observes `inProgress` /
 /// `succeeded` / `conflict` and does not hit remote again.
 ///
+/// Reachability is injected (`NetworkReachabilityProviding`). Offline
+/// drains return `.deferredOffline` without touching retry metadata
+/// and without calling remote. A remote `networkUnavailable` after
+/// an attempt still goes through `SyncRetryPolicy`.
+///
 /// Local business entities are never overwritten with a remote
 /// response (Phase 5D reconciliation). Only the `SyncOperation`
 /// row (and an optional `SyncConflict` row) is updated.
@@ -15,6 +20,7 @@ actor LocalToRemoteSyncManager: SyncManaging {
     private let conflicts: any SyncConflictRepository
     private let local: SyncEntityRepositories
     private let remote: SyncEntityRepositories
+    private let reachability: any NetworkReachabilityProviding
     /// Guards re-entrant `await` points so the same `id` cannot be
     /// dispatched twice on this instance.
     private var inFlightIDs: Set<String> = []
@@ -23,22 +29,30 @@ actor LocalToRemoteSyncManager: SyncManaging {
         queue: any SyncOperationRepository,
         conflicts: any SyncConflictRepository,
         local: SyncEntityRepositories,
-        remote: SyncEntityRepositories
+        remote: SyncEntityRepositories,
+        reachability: any NetworkReachabilityProviding
     ) {
         self.queue = queue
         self.conflicts = conflicts
         self.local = local
         self.remote = remote
+        self.reachability = reachability
     }
 
-    func syncPending(now: Date) async throws {
+    func syncPending(now: Date) async throws -> SyncDrainOutcome {
+        guard await reachability.isReachable else {
+            return .deferredOffline
+        }
         let pending = try await queue.fetchPending(now: now)
         for operation in pending {
             try await sync(operation: operation, now: now)
         }
+        return .completed
     }
 
     func sync(operation: SyncOperation, now: Date) async throws {
+        guard await reachability.isReachable else { return }
+
         let rawID = operation.id.rawValue
         guard !inFlightIDs.contains(rawID) else { return }
         inFlightIDs.insert(rawID)

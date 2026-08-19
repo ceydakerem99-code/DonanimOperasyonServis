@@ -465,7 +465,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             queue: local.syncOperations,
             conflicts: local.syncConflicts,
             local: localEntities,
-            remote: remote.repositories
+            remote: remote.repositories,
+            reachability: FakeNetworkReachability()
         )
         return Environment(
             local: local,

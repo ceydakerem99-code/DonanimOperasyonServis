@@ -431,7 +431,8 @@ final class LocalConflictResolverTests: XCTestCase {
             queue: local.syncOperations,
             conflicts: local.syncConflicts,
             local: localEntities,
-            remote: remoteRepos
+            remote: remoteRepos,
+            reachability: FakeNetworkReachability()
         )
         return Environment(
             local: local,

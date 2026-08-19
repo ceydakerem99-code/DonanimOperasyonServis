@@ -12,7 +12,9 @@ import SwiftData
 /// Phase 5C wires `SyncManager` to drain the local queue toward
 /// the Firebase repositories. Phase 5D adds remote → local
 /// reconciliation. Phase 5E adds `ConflictResolver` for explicit
-/// `useLocal` / `useRemote` / `unresolved` decisions.
+/// `useLocal` / `useRemote` / `unresolved` decisions. Phase 5F
+/// adds network reachability, manual retry via `SyncRetryPolicy`,
+/// and in-progress recovery. There is still no background scheduler.
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
 ///   the SwiftData implementations used by the running app.
@@ -52,6 +54,8 @@ final class DIContainer: Sendable {
     let syncManager: any SyncManaging
     let reconciliationEngine: any Reconciling
     let conflictResolver: any ConflictResolving
+    let networkReachability: any NetworkReachabilityProviding
+    let syncRecoveryHandler: any SyncRecoveryHandling
 
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
@@ -83,7 +87,8 @@ final class DIContainer: Sendable {
                 modelContainer: ModelContainerFactory.live(),
                 firestoreDataSource: LiveFirestoreDataSource(),
                 storageDataSource: LiveFirebaseStorageDataSource(),
-                firebaseBootstrapOutcome: outcome
+                firebaseBootstrapOutcome: outcome,
+                networkReachability: makeLiveReachability()
             )
         case .skippedNoConfig, .skippedInvalidConfig:
             throw FirebaseError.notConfigured
@@ -100,7 +105,8 @@ final class DIContainer: Sendable {
                 modelContainer: ModelContainerFactory.inMemory(),
                 firestoreDataSource: FakeFirestoreDataSource(),
                 storageDataSource: FakeFirebaseStorageDataSource(),
-                firebaseBootstrapOutcome: .skippedNoConfig
+                firebaseBootstrapOutcome: .skippedNoConfig,
+                networkReachability: FakeNetworkReachability()
             )
         } catch {
             fatalError("Failed to construct in-memory DIContainer: \(error)")
@@ -111,7 +117,8 @@ final class DIContainer: Sendable {
         modelContainer: ModelContainer,
         firestoreDataSource: any FirestoreDataSource,
         storageDataSource: any FirebaseStorageDataSource,
-        firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome
+        firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome,
+        networkReachability: any NetworkReachabilityProviding
     ) {
         let store = LocalPersistence(modelContainer: modelContainer)
         self.modelContainer = modelContainer
@@ -171,11 +178,13 @@ final class DIContainer: Sendable {
         self.remoteSignatureRepository                = remoteEntities.signatures
         self.remoteEditRequestRepository              = remoteEntities.editRequests
         self.remoteNotificationRepository             = remoteEntities.notifications
+        self.networkReachability = networkReachability
         self.syncManager = LocalToRemoteSyncManager(
             queue: self.syncOperationRepository,
             conflicts: self.syncConflictRepository,
             local: localEntities,
-            remote: remoteEntities
+            remote: remoteEntities,
+            reachability: networkReachability
         )
         self.reconciliationEngine = RemoteToLocalReconciliationEngine(
             queue: self.syncOperationRepository,
@@ -189,5 +198,14 @@ final class DIContainer: Sendable {
             local: localEntities,
             remote: remoteEntities
         )
+        self.syncRecoveryHandler = LocalSyncRecoveryHandler(
+            queue: self.syncOperationRepository
+        )
+    }
+
+    private static func makeLiveReachability() -> PathMonitorNetworkReachability {
+        let monitor = PathMonitorNetworkReachability()
+        monitor.start()
+        return monitor
     }
 }
