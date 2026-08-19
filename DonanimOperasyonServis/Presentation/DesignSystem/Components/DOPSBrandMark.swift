@@ -12,6 +12,8 @@ struct DOPSBrandMark: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: logoSize, height: logoSize)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
                 .accessibilityHidden(true)
 
             Text("DOPS")
