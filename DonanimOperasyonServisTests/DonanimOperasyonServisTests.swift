@@ -28,6 +28,19 @@ final class DonanimOperasyonServisTests: XCTestCase {
         XCTAssertNotNil(container.signatureRepository)
         XCTAssertNotNil(container.editRequestRepository)
         XCTAssertNotNil(container.notificationRepository)
+        XCTAssertNotNil(container.remoteUserRepository)
+        XCTAssertNotNil(container.remoteCustomerRepository)
+        XCTAssertNotNil(container.remoteWorkOrderRepository)
+        XCTAssertNotNil(container.remoteWorkOrderNoteRepository)
+        XCTAssertNotNil(container.remoteWorkOrderPhotoRepository)
+        XCTAssertNotNil(container.remoteWorkOrderLocationRepository)
+        XCTAssertNotNil(container.remoteWorkOrderStatusHistoryRepository)
+        XCTAssertNotNil(container.remoteSignatureRepository)
+        XCTAssertNotNil(container.remoteEditRequestRepository)
+        XCTAssertNotNil(container.remoteNotificationRepository)
+        XCTAssertNotNil(container.firestoreDataSource)
+        XCTAssertNotNil(container.firebaseStorageDataSource)
+        XCTAssertEqual(container.firebaseBootstrapOutcome, .skippedNoConfig)
     }
 
     func testAppLoggerSubsystemMatchesBundleIdentifier() {

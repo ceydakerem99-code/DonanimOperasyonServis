@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// =============================================================================
+// Firestore Security Rules — v1 skeleton (Phase 4)
+// =============================================================================
+//
+// STATUS: NOT production-ready. Authentication is implemented in Phase 6.
+// Until then these rules default to "deny all" for clients and document the
+// intended v1 access model as TODOs.
+//
+// Design principles for v1 (to be enforced once Firebase Auth lands):
+//
+//   1. Every request MUST have request.auth != null. Unauthenticated
+//      reads and writes are denied by default.
+//   2. Role is stored on /users/{uid} and is NOT client-writable.
+//      Admin/operator/technician permissions come from that document,
+//      mirroring Domain/RoleAccessPolicy.
+//   3. Technicians may only read/write work orders assigned to them
+//      (resource.data.assignedTechnicianId == request.auth.uid) and
+//      child records whose workOrderId points at such an order.
+//   4. Operators may read/write operational collections (work orders,
+//      customers, edit requests). They cannot manage users.
+//   5. Admins may manage /users but are not an operational actor —
+//      they do not approve EditRequests (see RoleAccessPolicy).
+//   6. Completed work orders are locked at the Domain layer; rules
+//      should additionally reject status transitions out of
+//      "completed" as defence in depth (Phase 6).
+//
+// Collection names MUST stay in sync with
+// `FirestoreCollection` (DonanimOperasyonServis/Data/Remote/Firebase/Config).
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny. Any collection not listed below is unreachable
+    // from client SDKs.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ----- users -------------------------------------------------------------
+    // TODO(Phase 6): allow read if signed in; allow write only for
+    // admin (or for a user updating their own non-role fields).
+    match /users/{userId} {
+      allow read, write: if false;
+    }
+
+    // ----- customers ---------------------------------------------------------
+    // TODO(Phase 6): operator + admin read/write; technician read of
+    // customers attached to their assigned work orders.
+    match /customers/{customerId} {
+      allow read, write: if false;
+    }
+
+    // ----- workOrders --------------------------------------------------------
+    // TODO(Phase 6):
+    //   - operator: list + write
+    //   - technician: read/write iff assignedTechnicianId == auth.uid
+    //   - reject status changes out of "completed"
+    match /workOrders/{workOrderId} {
+      allow read, write: if false;
+    }
+
+    // ----- child collections (flat, keyed by workOrderId) --------------------
+    // TODO(Phase 6): same visibility as the parent work order.
+    match /workOrderNotes/{noteId} {
+      allow read, write: if false;
+    }
+    match /workOrderStatusHistory/{historyId} {
+      allow read, write: if false;
+    }
+    match /workOrderPhotos/{photoId} {
+      allow read, write: if false;
+    }
+    match /workOrderLocations/{locationId} {
+      allow read, write: if false;
+    }
+    match /signatures/{signatureId} {
+      allow read, write: if false;
+    }
+    match /editRequests/{editRequestId} {
+      // TODO(Phase 6): technician create on own completed orders;
+      // operator approve/reject; admin denied (RoleAccessPolicy).
+      allow read, write: if false;
+    }
+
+    // ----- notifications -----------------------------------------------------
+    // TODO(Phase 6): recipient can read/mark-as-read their own rows.
+    // Creates are performed by Cloud Functions / trusted server.
+    match /notifications/{notificationId} {
+      allow read, write: if false;
+    }
+  }
+}

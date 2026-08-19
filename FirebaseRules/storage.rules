@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// =============================================================================
+// Firebase Storage Security Rules — v1 skeleton (Phase 4)
+// =============================================================================
+//
+// STATUS: NOT production-ready. Authentication is Phase 6.
+// Until then every object is denied. Path layout MUST stay in sync
+// with `FirebaseStoragePath`:
+//
+//   workOrders/{workOrderId}/photos/{photoId}
+//   workOrders/{workOrderId}/signatures/{signatureId}
+//
+// TODO(Phase 6):
+//   - require request.auth != null
+//   - technician may upload/read photos and signatures for work
+//     orders assigned to them
+//   - operator may read all objects
+//   - size / content-type limits (images only, e.g. < 8 MB)
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /workOrders/{workOrderId}/photos/{photoId} {
+      allow read, write: if false;
+    }
+
+    match /workOrders/{workOrderId}/signatures/{signatureId} {
+      allow read, write: if false;
+    }
+  }
+}

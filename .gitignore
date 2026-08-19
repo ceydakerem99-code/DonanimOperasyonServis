@@ -39,6 +39,7 @@ Packages/
 Pods/
 
 # Firebase secrets - real GoogleService-Info files must NEVER be committed
+GoogleService-Info.plist
 GoogleService-Info-Dev.plist
 GoogleService-Info-Prod.plist
 

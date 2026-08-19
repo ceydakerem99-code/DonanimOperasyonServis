@@ -3,28 +3,37 @@ import SwiftData
 
 /// Root dependency container.
 ///
-/// Holds the app's shared SwiftData `ModelContainer` and the
-/// repository implementations wired against it. ViewModels and use
-/// cases receive their collaborators via constructor injection —
-/// they should never reach into `DIContainer` at call sites, so
-/// tests can substitute individual repositories without going
-/// through the container.
+/// Holds the app's shared SwiftData `ModelContainer`, the local
+/// (SwiftData) repositories, and the remote (Firebase) repositories
+/// / data sources. ViewModels and use cases receive collaborators
+/// via constructor injection — they should never reach into
+/// `DIContainer` at call sites.
 ///
-/// - Note: `DIContainer` is a `final class` and not `@Observable`.
-///   It is created once at app launch and shared through the SwiftUI
-///   environment via ``DIContainerKey``.
+/// Phase 4 keeps **both** local and remote repository families
+/// wired, without composing them. Phase 5 will introduce
+/// `SyncManager` that reads from both. Until then:
+///
+/// - `userRepository` (and siblings without a `remote` prefix) stay
+///   the SwiftData implementations used by the running app.
+/// - `remoteUserRepository` (and siblings) are the Firebase
+///   implementations, ready for SyncManager to consume.
+///
+/// `AuthRepository` remains the Phase 3 local-session placeholder.
+/// Firebase Auth is Phase 6 and is not wired here.
 final class DIContainer: Sendable {
 
-    /// The SwiftData container backing every persistence repository
-    /// in this DIContainer. Kept accessible so future subsystems
-    /// (e.g. `@Query` in previews) can attach to the same store.
     let modelContainer: ModelContainer
-
-    /// Actor-isolated `ModelContext` wrapper. Exposed for future
-    /// use-cases that need multi-repository transactional writes.
     let localPersistence: LocalPersistence
 
-    // MARK: Repository handles (Domain protocol types)
+    /// Outcome of `FirebaseAppBootstrapper.configure()`. Exposed so
+    /// diagnostics / a later first-run error surface can inspect it.
+    let firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome
+
+    let firestoreDataSource: any FirestoreDataSource
+    let firebaseStorageDataSource: any FirebaseStorageDataSource
+    let workOrderWriteCoordinator: FirebaseWorkOrderWriteCoordinator
+
+    // MARK: Local (SwiftData) repositories — current app surface
 
     let userRepository: any UserRepository
     let authRepository: any AuthRepository
@@ -38,36 +47,79 @@ final class DIContainer: Sendable {
     let editRequestRepository: any EditRequestRepository
     let notificationRepository: any NotificationRepository
 
+    // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
+
+    let remoteUserRepository: any UserRepository
+    let remoteCustomerRepository: any CustomerRepository
+    let remoteWorkOrderRepository: any WorkOrderRepository
+    let remoteWorkOrderNoteRepository: any WorkOrderNoteRepository
+    let remoteWorkOrderPhotoRepository: any WorkOrderPhotoRepository
+    let remoteWorkOrderLocationRepository: any WorkOrderLocationRepository
+    let remoteWorkOrderStatusHistoryRepository: any WorkOrderStatusHistoryRepository
+    let remoteSignatureRepository: any SignatureRepository
+    let remoteEditRequestRepository: any EditRequestRepository
+    let remoteNotificationRepository: any NotificationRepository
+
     // MARK: Factories
 
     /// Live container used by the running application.
     ///
-    /// Throws when the disk-backed SwiftData store cannot be opened
-    /// (schema incompatibility, disk full, etc.). Callers at app
-    /// launch may either surface the error to the user or terminate
-    /// — there is no meaningful in-app recovery for a broken local
-    /// store in v3.
+    /// Throws when the disk-backed SwiftData store cannot be opened.
+    /// Firebase is bootstrapped opportunistically: a missing
+    /// `GoogleService-Info.plist` (the Phase 4 default) falls back
+    /// to in-memory fakes so the app still launches.
     static func live() throws -> DIContainer {
-        try DIContainer(modelContainer: ModelContainerFactory.live())
+        let outcome = FirebaseAppBootstrapper.configure()
+        let firestore: any FirestoreDataSource
+        let storage: any FirebaseStorageDataSource
+        switch outcome {
+        case .configured, .alreadyConfigured:
+            firestore = LiveFirestoreDataSource()
+            storage = LiveFirebaseStorageDataSource()
+        case .skippedNoConfig, .skippedInvalidConfig:
+            firestore = FakeFirestoreDataSource()
+            storage = FakeFirebaseStorageDataSource()
+        }
+        return try DIContainer(
+            modelContainer: ModelContainerFactory.live(),
+            firestoreDataSource: firestore,
+            storageDataSource: storage,
+            firebaseBootstrapOutcome: outcome
+        )
     }
 
-    /// In-memory container for previews and unit tests. Traps on
-    /// failure because an in-memory store construction is not
-    /// expected to fail on a running device; if it does, the test
-    /// harness itself is broken and a fail-fast is the correct
-    /// signal.
+    /// In-memory container for previews and unit tests. Always uses
+    /// fake Firebase data sources so tests never touch a real
+    /// project, and an in-memory SwiftData store so they never
+    /// touch the user's simulator data.
     static func mock() -> DIContainer {
         do {
-            return try DIContainer(modelContainer: ModelContainerFactory.inMemory())
+            return try DIContainer(
+                modelContainer: ModelContainerFactory.inMemory(),
+                firestoreDataSource: FakeFirestoreDataSource(),
+                storageDataSource: FakeFirebaseStorageDataSource(),
+                firebaseBootstrapOutcome: .skippedNoConfig
+            )
         } catch {
-            fatalError("Failed to construct in-memory SwiftData container: \(error)")
+            fatalError("Failed to construct in-memory DIContainer: \(error)")
         }
     }
 
-    private init(modelContainer: ModelContainer) {
+    private init(
+        modelContainer: ModelContainer,
+        firestoreDataSource: any FirestoreDataSource,
+        storageDataSource: any FirebaseStorageDataSource,
+        firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome
+    ) {
         let store = LocalPersistence(modelContainer: modelContainer)
         self.modelContainer = modelContainer
         self.localPersistence = store
+        self.firebaseBootstrapOutcome = firebaseBootstrapOutcome
+        self.firestoreDataSource = firestoreDataSource
+        self.firebaseStorageDataSource = storageDataSource
+        self.workOrderWriteCoordinator = FirebaseWorkOrderWriteCoordinator(
+            dataSource: firestoreDataSource
+        )
 
         self.userRepository                     = SwiftDataUserRepository(store: store)
         self.authRepository                     = SwiftDataAuthRepository(store: store)
@@ -80,5 +132,16 @@ final class DIContainer: Sendable {
         self.signatureRepository                = SwiftDataSignatureRepository(store: store)
         self.editRequestRepository              = SwiftDataEditRequestRepository(store: store)
         self.notificationRepository             = SwiftDataNotificationRepository(store: store)
+
+        self.remoteUserRepository                     = FirebaseUserRepository(dataSource: firestoreDataSource)
+        self.remoteCustomerRepository                 = FirebaseCustomerRepository(dataSource: firestoreDataSource)
+        self.remoteWorkOrderRepository                = FirebaseWorkOrderRepository(dataSource: firestoreDataSource)
+        self.remoteWorkOrderNoteRepository            = FirebaseWorkOrderNoteRepository(dataSource: firestoreDataSource)
+        self.remoteWorkOrderPhotoRepository           = FirebaseWorkOrderPhotoRepository(dataSource: firestoreDataSource)
+        self.remoteWorkOrderLocationRepository        = FirebaseWorkOrderLocationRepository(dataSource: firestoreDataSource)
+        self.remoteWorkOrderStatusHistoryRepository   = FirebaseWorkOrderStatusHistoryRepository(dataSource: firestoreDataSource)
+        self.remoteSignatureRepository                = FirebaseSignatureRepository(dataSource: firestoreDataSource)
+        self.remoteEditRequestRepository              = FirebaseEditRequestRepository(dataSource: firestoreDataSource)
+        self.remoteNotificationRepository             = FirebaseNotificationRepository(dataSource: firestoreDataSource)
     }
 }
