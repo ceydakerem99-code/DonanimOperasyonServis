@@ -46,6 +46,10 @@ enum DomainError: Error, Hashable, Sendable {
     /// Escape hatch for lower-layer (Data / Infrastructure) errors
     /// that reach the Domain surface unchanged. Use sparingly.
     case infrastructure(underlying: String)
+
+    /// A `SyncOperation` status transition from `from` to `to` is
+    /// not allowed by `SyncStatusStateMachine`.
+    case invalidSyncStatusTransition(from: SyncStatus, to: SyncStatus)
 }
 
 extension DomainError {
