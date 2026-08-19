@@ -2,7 +2,9 @@ import SwiftUI
 
 struct AdminAppShellView: View {
     let user: User
+    let dependencies: AdminDependencies
     let onLogout: () -> Void
+
     @State private var router = AdminAppRouter(selectedTab: .dashboard)
 
     var body: some View {
@@ -16,11 +18,7 @@ struct AdminAppShellView: View {
                 adminRoot(for: tab)
             },
             destination: { destination in
-                NavigationPlaceholderView(
-                    title: destination.title,
-                    subtitle: AdminNavigationConfiguration.destinationSubtitle(for: destination),
-                    detail: "Gerçek ekran Faz 11'de."
-                )
+                destinationView(for: destination)
             }
         )
         .onChange(of: router.selectedTab) { _, _ in
@@ -32,87 +30,94 @@ struct AdminAppShellView: View {
     private func adminRoot(for tab: AdminTab) -> some View {
         switch tab {
         case .dashboard:
-            tabRoot(
-                tab: tab,
-                sampleDestination: nil,
-                showsLogout: false
+            AdminDashboardView(
+                viewModel: AdminDashboardViewModel(actor: user, dependencies: dependencies)
             )
+
         case .users:
-            tabRoot(
-                tab: tab,
-                sampleDestination: .userDetail,
-                showsLogout: false
+            AdminUserListView(
+                viewModel: AdminUserListViewModel(actor: user, dependencies: dependencies),
+                onSelectUser: { router.push(.userDetail($0)) }
             )
+
         case .roles:
-            tabRoot(
-                tab: tab,
-                sampleDestination: .roleDetail,
-                showsLogout: false
+            AdminRoleListView(
+                viewModel: AdminRoleListViewModel(actor: user, dependencies: dependencies),
+                onSelectRole: { router.push(.roleDetail($0)) }
             )
+
         case .system:
-            tabRoot(
-                tab: tab,
-                sampleDestination: .workTypes,
-                showsLogout: false
+            AdminSystemView(
+                viewModel: AdminSystemViewModel(actor: user, dependencies: dependencies),
+                onShowWorkTypes: { router.push(.workTypes) },
+                onShowPauseReasons: { router.push(.pauseReasons) },
+                onShowConflicts: { router.push(.conflicts) },
+                onLogout: onLogout
             )
+
         case .reports:
-            tabRoot(
-                tab: tab,
-                sampleDestination: .reportDetail,
-                showsLogout: false
+            AdminReportsView(
+                onSelectReport: { router.push(.reportDetail($0)) }
             )
         }
     }
 
     @ViewBuilder
-    private func tabRoot(
-        tab: AdminTab,
-        sampleDestination: AdminDestination?,
-        showsLogout: Bool
-    ) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                NavigationPlaceholderView(
-                    title: tab.title,
-                    subtitle: AdminNavigationConfiguration.rootSubtitle(for: tab)
+    private func destinationView(for destination: AdminDestination) -> some View {
+        switch destination {
+        case .userDetail(let id):
+            AdminUserDetailView(
+                viewModel: AdminUserDetailViewModel(
+                    userId: id,
+                    actor: user,
+                    dependencies: dependencies
                 )
+            )
 
-                if let sampleDestination {
-                    SecondaryButton(
-                        title: "Örnek Detay",
-                        systemImage: "chevron.right"
-                    ) {
-                        router.push(sampleDestination)
-                    }
-                }
+        case .roleDetail(let role):
+            AdminRoleDetailView(role: role)
 
-                if showsLogout {
-                    SecondaryButton(
-                        title: "Çıkış Yap",
-                        systemImage: "rectangle.portrait.and.arrow.right",
-                        action: onLogout
-                    )
-                }
-            }
-            .padding(.horizontal, AppSpacing.l)
+        case .workTypes:
+            AdminWorkTypesView()
+
+        case .pauseReasons:
+            AdminPauseReasonsView()
+
+        case .reportDetail(let kind):
+            AdminReportDetailView(
+                viewModel: AdminReportDetailViewModel(
+                    kind: kind,
+                    actor: user,
+                    dependencies: dependencies
+                ),
+                onSelectWorkOrder: { router.push(.workOrderReport($0)) }
+            )
+
+        case .workOrderReport(let id):
+            AdminWorkOrderReportView(
+                viewModel: AdminWorkOrderReportViewModel(
+                    workOrderId: id,
+                    actor: user,
+                    dependencies: dependencies
+                )
+            )
+
+        case .conflicts:
+            AdminConflictListView(
+                viewModel: AdminConflictListViewModel(
+                    actor: user,
+                    dependencies: dependencies
+                )
+            )
         }
-        .navigationTitle(tab.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .accessibilityHint(Text(tab.accessibilityHint))
     }
 }
 
 #if DEBUG
 #Preview("Admin AppShell") {
     AdminAppShellView(
-        user: User(
-            id: UserID("admin-preview"),
-            email: "admin@example.com",
-            fullName: "Admin Önizleme",
-            role: .admin,
-            createdAt: Date(),
-            updatedAt: Date()
-        ),
+        user: AdminPreviewData.adminUser,
+        dependencies: DIContainer.mock().makeAdminDependencies(),
         onLogout: {}
     )
 }

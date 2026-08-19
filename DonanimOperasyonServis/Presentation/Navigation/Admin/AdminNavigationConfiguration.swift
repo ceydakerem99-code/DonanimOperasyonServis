@@ -41,13 +41,15 @@ extension AdminTab {
     }
 }
 
-/// Stack destinations reachable from Admin tabs (skeleton only).
-enum AdminDestination: String, Hashable, Sendable, CaseIterable {
-    case userDetail
-    case roleDetail
+/// Stack destinations reachable from Admin tabs.
+enum AdminDestination: Hashable, Sendable {
+    case userDetail(UserID)
+    case roleDetail(UserRole)
     case workTypes
     case pauseReasons
-    case reportDetail
+    case reportDetail(AdminReportKind)
+    case workOrderReport(WorkOrderID)
+    case conflicts
 }
 
 extension AdminDestination {
@@ -57,7 +59,9 @@ extension AdminDestination {
         case .roleDetail: return "Rol Detayı"
         case .workTypes: return "İş Türleri Yönetimi"
         case .pauseReasons: return "Bekleme Nedenleri"
-        case .reportDetail: return "İş Emri Raporu"
+        case .reportDetail(let kind): return kind.title
+        case .workOrderReport: return "İş Emri Raporu"
+        case .conflicts: return "Senkron Çakışmaları"
         }
     }
 }
@@ -69,13 +73,5 @@ enum AdminNavigationConfiguration {
         AdminTab.allCases.map {
             CustomTabBarItem(tab: $0, title: $0.title, systemImage: $0.systemImage)
         }
-    }
-
-    static func rootSubtitle(for tab: AdminTab) -> String {
-        "Admin — \(tab.title) navigation skeleton (Faz 7)."
-    }
-
-    static func destinationSubtitle(for destination: AdminDestination) -> String {
-        "Admin — \(destination.title) placeholder."
     }
 }

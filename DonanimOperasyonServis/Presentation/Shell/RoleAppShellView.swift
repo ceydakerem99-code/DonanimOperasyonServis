@@ -10,7 +10,11 @@ struct RoleAppShellView: View {
     var body: some View {
         switch user.role {
         case .admin:
-            AdminAppShellView(user: user, onLogout: onLogout)
+            AdminAppShellView(
+                user: user,
+                dependencies: container.makeAdminDependencies(),
+                onLogout: onLogout
+            )
         case .operator:
             OperatorAppShellView(
                 user: user,

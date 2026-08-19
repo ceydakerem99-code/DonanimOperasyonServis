@@ -40,8 +40,9 @@ final class AppShellRoutingTests: XCTestCase {
         let router = AdminAppRouter(selectedTab: .dashboard)
         XCTAssertEqual(router.selectedTab, .dashboard)
         router.selectedTab = .users
-        router.push(.userDetail)
-        XCTAssertEqual(router.path, [.userDetail])
+        let userId = UserID("user-test")
+        router.push(.userDetail(userId))
+        XCTAssertEqual(router.path, [.userDetail(userId)])
         router.popToRoot()
         XCTAssertTrue(router.path.isEmpty)
     }
