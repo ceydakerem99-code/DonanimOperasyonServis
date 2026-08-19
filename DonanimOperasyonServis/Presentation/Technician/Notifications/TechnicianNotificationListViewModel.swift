@@ -44,6 +44,8 @@ final class TechnicianNotificationListViewModel {
                 )
             }
             phase = notifications.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.technicianMessage)
         } catch {

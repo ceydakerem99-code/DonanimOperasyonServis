@@ -6,6 +6,18 @@ struct OperatorAppShellView: View {
     let onLogout: () -> Void
 
     @State private var router = OperatorAppRouter(selectedTab: .dashboard)
+    @State private var dashboardViewModel: OperatorDashboardViewModel
+    @State private var workOrderListViewModel: OperatorWorkOrderListViewModel
+    @State private var notificationListViewModel: OperatorNotificationListViewModel
+
+    init(user: User, dependencies: OperatorDependencies, onLogout: @escaping () -> Void) {
+        self.user = user
+        self.dependencies = dependencies
+        self.onLogout = onLogout
+        _dashboardViewModel = State(initialValue: OperatorDashboardViewModel(actor: user, dependencies: dependencies))
+        _workOrderListViewModel = State(initialValue: OperatorWorkOrderListViewModel(actor: user, dependencies: dependencies))
+        _notificationListViewModel = State(initialValue: OperatorNotificationListViewModel(actor: user, dependencies: dependencies))
+    }
 
     var body: some View {
         AppShellLayout(
@@ -36,22 +48,20 @@ struct OperatorAppShellView: View {
         switch tab {
         case .dashboard:
             OperatorDashboardView(
-                viewModel: OperatorDashboardViewModel(actor: user, dependencies: dependencies),
+                viewModel: dashboardViewModel,
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
                 onShowAllUrgent: { router.selectedTab = .workOrders }
             )
 
         case .workOrders:
             OperatorWorkOrderListView(
-                viewModel: OperatorWorkOrderListViewModel(actor: user, dependencies: dependencies),
+                viewModel: workOrderListViewModel,
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
                 onShowEditRequests: { router.push(.editRequests) }
             )
 
         case .notifications:
-            OperatorNotificationListView(
-                viewModel: OperatorNotificationListViewModel(actor: user, dependencies: dependencies)
-            )
+            OperatorNotificationListView(viewModel: notificationListViewModel)
 
         case .profile:
             OperatorProfileView(user: user, onLogout: onLogout)
@@ -78,6 +88,8 @@ struct OperatorAppShellView: View {
                 onFinished: { id in
                     router.popToRoot()
                     router.selectedTab = .workOrders
+                    Task { await workOrderListViewModel.load() }
+                    Task { await dashboardViewModel.load() }
                     router.push(.workOrderDetail(id))
                 },
                 onCancel: { router.popToRoot() }

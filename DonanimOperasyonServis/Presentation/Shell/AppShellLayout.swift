@@ -24,11 +24,16 @@ struct AppShellLayout<Tab: Hashable, Destination: Hashable, Root: View, Dest: Vi
                     }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            CustomTabBar(
-                items: tabs,
-                selection: $selectedTab,
-                centerAction: centerAction
-            )
+
+            // Hide tab bar while a stack destination (wizard/detail) is
+            // active so FAB/tab selection cannot fight the pushed flow.
+            if path.isEmpty {
+                CustomTabBar(
+                    items: tabs,
+                    selection: $selectedTab,
+                    centerAction: centerAction
+                )
+            }
         }
         .background(AppColor.neutralBackground)
     }

@@ -13,6 +13,10 @@ extension DomainError {
                 return "Cihaz modeli boş olamaz."
             case "workOrder.serialNumberEmpty":
                 return "Seri numarası boş olamaz."
+            case "customer.nameEmpty":
+                return "Müşteri adı boş olamaz."
+            case "customer.addressEmpty":
+                return "Adres boş olamaz."
             default:
                 return "Girilen bilgiler geçersiz."
             }

@@ -19,10 +19,10 @@ struct OperatorProfileView: View {
                 }
 
                 profileCard(title: "Hesap") {
-                    profileMenuRow(title: "Bildirim Ayarları", systemImage: "bell")
-                    profileMenuRow(title: "Şifre Değiştir", systemImage: "lock")
-                    profileMenuRow(title: "Dil", value: "Türkçe", systemImage: "globe")
-                    profileMenuRow(title: "Uygulama Hakkında", systemImage: "info.circle")
+                    ProfileUnsupportedRow(title: "Bildirim Ayarları", systemImage: "bell")
+                    ProfileUnsupportedRow(title: "Şifre Değiştir", systemImage: "lock")
+                    ProfileUnsupportedRow(title: "Dil", systemImage: "globe", value: "Türkçe")
+                    InfoRow(title: "Uygulama Hakkında", value: "DOPS 0.1.0", systemImage: "info.circle")
                 }
 
                 Button(action: onLogout) {
@@ -75,26 +75,6 @@ struct OperatorProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
-    }
-
-    private func profileMenuRow(title: String, value: String? = nil, systemImage: String) -> some View {
-        HStack {
-            Image(systemName: systemImage)
-                .foregroundStyle(AppColor.brandPrimary)
-                .frame(width: 24)
-            Text(title)
-                .font(AppFont.body)
-            Spacer()
-            if let value {
-                Text(value)
-                    .font(AppFont.caption)
-                    .foregroundStyle(AppColor.secondaryText)
-            }
-            Image(systemName: "chevron.right")
-                .font(AppFont.label)
-                .foregroundStyle(AppColor.secondaryText)
-        }
-        .frame(minHeight: AppSpacing.minimumTouchTarget)
     }
 }
 

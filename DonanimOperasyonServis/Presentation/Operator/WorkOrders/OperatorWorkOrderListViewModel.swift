@@ -18,6 +18,7 @@ final class OperatorWorkOrderListViewModel {
 
     private let actor: User
     private let dependencies: OperatorDependencies
+    private var loadGeneration = 0
 
     init(actor: User, dependencies: OperatorDependencies) {
         self.actor = actor
@@ -25,16 +26,25 @@ final class OperatorWorkOrderListViewModel {
     }
 
     func load() async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
         phase = .loading
         do {
             let filter = WorkOrderFilter(status: selectedFilter.status)
             let orders = try await dependencies.getWorkOrders.execute(actor: actor, filter: filter)
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             let filtered = Self.applySearch(searchText, to: orders)
-            cards = try await Self.makeCards(from: filtered, dependencies: dependencies)
+            let built = await Self.makeCards(from: filtered, dependencies: dependencies)
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            cards = built
             phase = cards.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
+            guard generation == loadGeneration else { return }
             phase = .error(error.operatorMessage)
         } catch {
+            guard generation == loadGeneration else { return }
             phase = .error("İş emirleri yüklenemedi.")
         }
     }
@@ -59,15 +69,20 @@ final class OperatorWorkOrderListViewModel {
     private static func makeCards(
         from orders: [WorkOrder],
         dependencies: OperatorDependencies
-    ) async throws -> [WorkOrderCardData] {
+    ) async -> [WorkOrderCardData] {
         var cards: [WorkOrderCardData] = []
         for order in orders.sorted(by: { $0.scheduledDate > $1.scheduledDate }) {
-            let customer = try await dependencies.customerRepository.fetch(id: order.customerId)
+            let customerName: String
+            if let customer = try? await dependencies.customerRepository.fetch(id: order.customerId) {
+                customerName = customer.name
+            } else {
+                customerName = "Bilinmeyen müşteri"
+            }
             let technician = try? await dependencies.userRepository.fetch(id: order.assignedTechnicianId)
             cards.append(
                 WorkOrderPresentationMapping.cardData(
                     from: order,
-                    customerName: customer.name,
+                    customerName: customerName,
                     technicianName: technician?.fullName
                 )
             )

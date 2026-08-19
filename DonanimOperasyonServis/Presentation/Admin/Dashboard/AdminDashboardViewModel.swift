@@ -75,6 +75,8 @@ final class AdminDashboardViewModel {
             )
 
             phase = users.isEmpty && orders.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.adminMessage)
         } catch {

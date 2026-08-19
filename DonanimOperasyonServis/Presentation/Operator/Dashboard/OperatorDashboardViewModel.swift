@@ -38,8 +38,10 @@ final class OperatorDashboardViewModel {
         do {
             let orders = try await dependencies.getWorkOrders.execute(actor: actor)
             summary = Self.makeSummary(from: orders)
-            urgentOrders = try await Self.makeUrgentCards(from: orders, dependencies: dependencies)
+            urgentOrders = await Self.makeUrgentCards(from: orders, dependencies: dependencies)
             phase = orders.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.operatorMessage)
         } catch {
@@ -59,19 +61,20 @@ final class OperatorDashboardViewModel {
     private static func makeUrgentCards(
         from orders: [WorkOrder],
         dependencies: OperatorDependencies
-    ) async throws -> [WorkOrderCardData] {
+    ) async -> [WorkOrderCardData] {
         let urgent = orders
             .filter { $0.priority == .urgent && $0.status != .completed }
             .sorted { $0.scheduledDate < $1.scheduledDate }
 
         var cards: [WorkOrderCardData] = []
         for order in urgent.prefix(5) {
-            let customer = try await dependencies.customerRepository.fetch(id: order.customerId)
+            let customerName = (try? await dependencies.customerRepository.fetch(id: order.customerId))?.name
+                ?? "Bilinmeyen müşteri"
             let technician = try? await dependencies.userRepository.fetch(id: order.assignedTechnicianId)
             cards.append(
                 WorkOrderPresentationMapping.cardData(
                     from: order,
-                    customerName: customer.name,
+                    customerName: customerName,
                     technicianName: technician?.fullName
                 )
             )

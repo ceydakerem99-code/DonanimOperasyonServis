@@ -53,6 +53,12 @@ struct TechnicianWorkOrderDetailView: View {
                 )
                 syncBanner(content)
                 customerSection(content)
+                WorkOrderMapSection(
+                    customerName: content.customer.name,
+                    address: content.customer.address,
+                    city: content.customer.city,
+                    capturedLocations: content.locations
+                )
                 deviceSection(content.workOrder)
                 workSection(content)
                 evidenceSection(content)

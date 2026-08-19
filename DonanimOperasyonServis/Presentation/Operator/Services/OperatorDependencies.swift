@@ -5,6 +5,7 @@ struct OperatorDependencies: Sendable {
     let getWorkOrders: GetWorkOrdersUseCase
     let getWorkOrder: GetWorkOrderUseCase
     let workOrderService: OperatorWorkOrderService
+    let customerService: OperatorCustomerService
     let customerRepository: CustomerRepository
     let userRepository: UserRepository
     let workOrderNoteRepository: WorkOrderNoteRepository
@@ -28,6 +29,10 @@ extension DIContainer {
                     statusHistoryRepository: workOrderStatusHistoryRepository
                 ),
                 statusHistoryRepository: workOrderStatusHistoryRepository,
+                syncOperationRepository: syncOperationRepository
+            ),
+            customerService: OperatorCustomerService(
+                createCustomer: CreateCustomerUseCase(customerRepository: customerRepository),
                 syncOperationRepository: syncOperationRepository
             ),
             customerRepository: customerRepository,

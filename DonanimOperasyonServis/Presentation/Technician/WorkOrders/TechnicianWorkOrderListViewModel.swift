@@ -30,8 +30,10 @@ final class TechnicianWorkOrderListViewModel {
             let orders = try await dependencies.getWorkOrders.execute(actor: actor)
             let filtered = Self.applyFilter(selectedFilter, to: orders)
             let searched = Self.applySearch(searchText, to: filtered)
-            cards = try await Self.makeCards(from: searched, dependencies: dependencies)
+            cards = await Self.makeCards(from: searched, dependencies: dependencies)
             phase = cards.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.technicianMessage)
         } catch {
@@ -66,14 +68,15 @@ final class TechnicianWorkOrderListViewModel {
     private static func makeCards(
         from orders: [WorkOrder],
         dependencies: TechnicianDependencies
-    ) async throws -> [WorkOrderCardData] {
+    ) async -> [WorkOrderCardData] {
         var cards: [WorkOrderCardData] = []
         for order in orders.sorted(by: { $0.scheduledDate > $1.scheduledDate }) {
-            let customer = try await dependencies.customerRepository.fetch(id: order.customerId)
+            let customerName = (try? await dependencies.customerRepository.fetch(id: order.customerId))?.name
+                ?? "Bilinmeyen müşteri"
             cards.append(
                 WorkOrderPresentationMapping.cardData(
                     from: order,
-                    customerName: customer.name,
+                    customerName: customerName,
                     technicianName: nil
                 )
             )

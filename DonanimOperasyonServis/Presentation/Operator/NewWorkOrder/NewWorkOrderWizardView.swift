@@ -105,14 +105,33 @@ struct NewWorkOrderWizardView: View {
             .padding(AppSpacing.m)
             .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
 
-            ForEach(viewModel.customers) { customer in
-                selectionCard(
-                    title: customer.name,
-                    subtitle: customer.address,
+            PrimaryButton(title: "Yeni Müşteri Ekle", systemImage: "plus.circle") {
+                viewModel.openCreateCustomer()
+            }
+
+            if viewModel.customers.isEmpty {
+                EmptyState(
                     systemImage: "building.2",
-                    selected: viewModel.draft.customer?.id == customer.id
-                ) {
-                    viewModel.selectCustomer(customer)
+                    title: "Kayıtlı müşteri yok",
+                    message: "Devam etmek için yeni müşteri ekleyin."
+                )
+            } else {
+                ForEach(viewModel.customers) { customer in
+                    selectionCard(
+                        title: customer.name,
+                        subtitle: customer.address,
+                        systemImage: "building.2",
+                        selected: viewModel.draft.customer?.id == customer.id
+                    ) {
+                        viewModel.selectCustomer(customer)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $viewModel.showsCreateCustomer) {
+            NavigationStack {
+                CreateCustomerFormView(viewModel: viewModel) {
+                    viewModel.showsCreateCustomer = false
                 }
             }
         }

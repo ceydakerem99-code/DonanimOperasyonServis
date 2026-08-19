@@ -6,6 +6,18 @@ struct TechnicianAppShellView: View {
     let onLogout: () -> Void
 
     @State private var router = TechnicianAppRouter(selectedTab: .home)
+    @State private var homeViewModel: TechnicianHomeViewModel
+    @State private var workOrderListViewModel: TechnicianWorkOrderListViewModel
+    @State private var notificationListViewModel: TechnicianNotificationListViewModel
+
+    init(user: User, dependencies: TechnicianDependencies, onLogout: @escaping () -> Void) {
+        self.user = user
+        self.dependencies = dependencies
+        self.onLogout = onLogout
+        _homeViewModel = State(initialValue: TechnicianHomeViewModel(actor: user, dependencies: dependencies))
+        _workOrderListViewModel = State(initialValue: TechnicianWorkOrderListViewModel(actor: user, dependencies: dependencies))
+        _notificationListViewModel = State(initialValue: TechnicianNotificationListViewModel(actor: user, dependencies: dependencies))
+    }
 
     var body: some View {
         AppShellLayout(
@@ -31,19 +43,17 @@ struct TechnicianAppShellView: View {
         switch tab {
         case .home:
             TechnicianHomeView(
-                viewModel: TechnicianHomeViewModel(actor: user, dependencies: dependencies),
+                viewModel: homeViewModel,
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
                 onShowWorkOrders: { router.selectedTab = .workOrders }
             )
         case .workOrders:
             TechnicianWorkOrderListView(
-                viewModel: TechnicianWorkOrderListViewModel(actor: user, dependencies: dependencies),
+                viewModel: workOrderListViewModel,
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) }
             )
         case .notifications:
-            TechnicianNotificationListView(
-                viewModel: TechnicianNotificationListViewModel(actor: user, dependencies: dependencies)
-            )
+            TechnicianNotificationListView(viewModel: notificationListViewModel)
         case .profile:
             TechnicianProfileView(user: user, onLogout: onLogout)
         }

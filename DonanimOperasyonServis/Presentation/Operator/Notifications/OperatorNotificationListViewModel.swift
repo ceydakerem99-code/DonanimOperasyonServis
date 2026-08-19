@@ -24,6 +24,7 @@ final class OperatorNotificationListViewModel {
 
     private let actor: User
     private let dependencies: OperatorDependencies
+    private var loadGeneration = 0
 
     init(actor: User, dependencies: OperatorDependencies) {
         self.actor = actor
@@ -31,12 +32,15 @@ final class OperatorNotificationListViewModel {
     }
 
     func load() async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
         phase = .loading
         do {
             let items = try await dependencies.notificationRepository.list(
                 for: actor.id,
                 unreadOnly: false
             )
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             notifications = items
                 .sorted { $0.createdAt > $1.createdAt }
                 .map {
@@ -49,9 +53,13 @@ final class OperatorNotificationListViewModel {
                     )
                 }
             phase = notifications.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
+            guard generation == loadGeneration else { return }
             phase = .error(error.operatorMessage)
         } catch {
+            guard generation == loadGeneration else { return }
             phase = .error("Bildirimler yüklenemedi.")
         }
     }

@@ -6,6 +6,20 @@ struct AdminAppShellView: View {
     let onLogout: () -> Void
 
     @State private var router = AdminAppRouter(selectedTab: .dashboard)
+    @State private var dashboardViewModel: AdminDashboardViewModel
+    @State private var userListViewModel: AdminUserListViewModel
+    @State private var roleListViewModel: AdminRoleListViewModel
+    @State private var systemViewModel: AdminSystemViewModel
+
+    init(user: User, dependencies: AdminDependencies, onLogout: @escaping () -> Void) {
+        self.user = user
+        self.dependencies = dependencies
+        self.onLogout = onLogout
+        _dashboardViewModel = State(initialValue: AdminDashboardViewModel(actor: user, dependencies: dependencies))
+        _userListViewModel = State(initialValue: AdminUserListViewModel(actor: user, dependencies: dependencies))
+        _roleListViewModel = State(initialValue: AdminRoleListViewModel(actor: user, dependencies: dependencies))
+        _systemViewModel = State(initialValue: AdminSystemViewModel(actor: user, dependencies: dependencies))
+    }
 
     var body: some View {
         AppShellLayout(
@@ -30,25 +44,23 @@ struct AdminAppShellView: View {
     private func adminRoot(for tab: AdminTab) -> some View {
         switch tab {
         case .dashboard:
-            AdminDashboardView(
-                viewModel: AdminDashboardViewModel(actor: user, dependencies: dependencies)
-            )
+            AdminDashboardView(viewModel: dashboardViewModel)
 
         case .users:
             AdminUserListView(
-                viewModel: AdminUserListViewModel(actor: user, dependencies: dependencies),
+                viewModel: userListViewModel,
                 onSelectUser: { router.push(.userDetail($0)) }
             )
 
         case .roles:
             AdminRoleListView(
-                viewModel: AdminRoleListViewModel(actor: user, dependencies: dependencies),
+                viewModel: roleListViewModel,
                 onSelectRole: { router.push(.roleDetail($0)) }
             )
 
         case .system:
             AdminSystemView(
-                viewModel: AdminSystemViewModel(actor: user, dependencies: dependencies),
+                viewModel: systemViewModel,
                 onShowWorkTypes: { router.push(.workTypes) },
                 onShowPauseReasons: { router.push(.pauseReasons) },
                 onShowConflicts: { router.push(.conflicts) },

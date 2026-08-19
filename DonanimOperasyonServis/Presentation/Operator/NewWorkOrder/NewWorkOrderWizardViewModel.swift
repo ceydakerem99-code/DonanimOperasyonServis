@@ -46,6 +46,16 @@ final class NewWorkOrderWizardViewModel {
     var customerSearchText = ""
     var technicianSearchText = ""
     private(set) var isOffline = false
+    var showsCreateCustomer = false
+    var isCreatingCustomer = false
+    var newCustomerError: String?
+    var newCustomerName = ""
+    var newCustomerContact = ""
+    var newCustomerPhone = ""
+    var newCustomerEmail = ""
+    var newCustomerAddress = ""
+    var newCustomerCity = ""
+    var newCustomerNotes = ""
 
     var draft = NewWorkOrderDraft()
 
@@ -62,8 +72,50 @@ final class NewWorkOrderWizardViewModel {
         do {
             customers = try await dependencies.customerRepository.list(searchText: nil)
             technicians = try await dependencies.userRepository.list(role: .technician, isActive: true)
+        } catch is CancellationError {
+            return
         } catch {
             phase = .error("Seçim listeleri yüklenemedi.")
+        }
+    }
+
+    func openCreateCustomer() {
+        newCustomerError = nil
+        newCustomerName = ""
+        newCustomerContact = ""
+        newCustomerPhone = ""
+        newCustomerEmail = ""
+        newCustomerAddress = ""
+        newCustomerCity = ""
+        newCustomerNotes = ""
+        showsCreateCustomer = true
+    }
+
+    func createCustomer() async {
+        isCreatingCustomer = true
+        newCustomerError = nil
+        defer { isCreatingCustomer = false }
+        do {
+            let phone: PhoneNumber?
+            let trimmedPhone = newCustomerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+            phone = trimmedPhone.isEmpty ? nil : PhoneNumber(trimmedPhone)
+            let created = try await dependencies.customerService.createWithSync(
+                actor: actor,
+                name: newCustomerName,
+                contactPersonName: newCustomerContact,
+                phoneNumber: phone,
+                email: newCustomerEmail,
+                address: newCustomerAddress,
+                city: newCustomerCity,
+                notes: newCustomerNotes
+            )
+            customers.insert(created, at: 0)
+            selectCustomer(created)
+            showsCreateCustomer = false
+        } catch let error as DomainError {
+            newCustomerError = error.operatorMessage
+        } catch {
+            newCustomerError = "Müşteri kaydedilemedi."
         }
     }
 
@@ -175,7 +227,7 @@ final class NewWorkOrderWizardViewModel {
             break
         case 5:
             if draft.technician == nil {
-                fieldErrors[.technician] = "Servis yetkilisi seçin."
+                fieldErrors[.technician] = "Teknisyen seçin."
             }
         default:
             break
@@ -188,7 +240,7 @@ final class NewWorkOrderWizardViewModel {
         if draft.workType == nil { fieldErrors[.workType] = "İş türü seçin." }
         if draft.customer == nil { fieldErrors[.customer] = "Müşteri seçin." }
         validateDeviceFields()
-        if draft.technician == nil { fieldErrors[.technician] = "Servis yetkilisi seçin." }
+        if draft.technician == nil { fieldErrors[.technician] = "Teknisyen seçin." }
         return fieldErrors.isEmpty
     }
 
