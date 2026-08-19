@@ -2,7 +2,9 @@ import SwiftUI
 
 struct TechnicianAppShellView: View {
     let user: User
+    let dependencies: TechnicianDependencies
     let onLogout: () -> Void
+
     @State private var router = TechnicianAppRouter(selectedTab: .home)
 
     var body: some View {
@@ -16,11 +18,7 @@ struct TechnicianAppShellView: View {
                 technicianRoot(for: tab)
             },
             destination: { destination in
-                NavigationPlaceholderView(
-                    title: destination.title,
-                    subtitle: TechnicianNavigationConfiguration.destinationSubtitle(for: destination),
-                    detail: "Gerçek ekran Faz 8'de."
-                )
+                destinationView(for: destination)
             }
         )
         .onChange(of: router.selectedTab) { _, _ in
@@ -32,65 +30,52 @@ struct TechnicianAppShellView: View {
     private func technicianRoot(for tab: TechnicianTab) -> some View {
         switch tab {
         case .home:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: false)
+            TechnicianHomeView(
+                viewModel: TechnicianHomeViewModel(actor: user, dependencies: dependencies),
+                onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
+                onShowWorkOrders: { router.selectedTab = .workOrders }
+            )
         case .workOrders:
-            tabRoot(tab: tab, sampleDestination: .workOrderDetail, showsLogout: false)
+            TechnicianWorkOrderListView(
+                viewModel: TechnicianWorkOrderListViewModel(actor: user, dependencies: dependencies),
+                onSelectWorkOrder: { router.push(.workOrderDetail($0)) }
+            )
         case .notifications:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: false)
+            TechnicianNotificationListView(
+                viewModel: TechnicianNotificationListViewModel(actor: user, dependencies: dependencies)
+            )
         case .profile:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: true)
+            TechnicianProfileView(user: user, onLogout: onLogout)
         }
     }
 
     @ViewBuilder
-    private func tabRoot(
-        tab: TechnicianTab,
-        sampleDestination: TechnicianDestination?,
-        showsLogout: Bool
-    ) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                NavigationPlaceholderView(
-                    title: tab.title,
-                    subtitle: TechnicianNavigationConfiguration.rootSubtitle(for: tab)
-                )
-
-                if let sampleDestination {
-                    SecondaryButton(
-                        title: "Örnek Detay",
-                        systemImage: "chevron.right"
-                    ) {
-                        router.push(sampleDestination)
-                    }
-                }
-
-                if showsLogout {
-                    SecondaryButton(
-                        title: "Çıkış Yap",
-                        systemImage: "rectangle.portrait.and.arrow.right",
-                        action: onLogout
-                    )
-                }
-            }
-            .padding(.horizontal, AppSpacing.l)
+    private func destinationView(for destination: TechnicianDestination) -> some View {
+        switch destination {
+        case .workOrderDetail(let id):
+            TechnicianWorkOrderDetailView(
+                viewModel: TechnicianWorkOrderDetailViewModel(
+                    workOrderId: id,
+                    actor: user,
+                    dependencies: dependencies
+                ),
+                onShowReport: { router.push(.serviceReport($0)) }
+            )
+        case .serviceReport(let id):
+            TechnicianServiceReportView(
+                workOrderId: id,
+                dependencies: dependencies,
+                actor: user
+            )
         }
-        .navigationTitle(tab.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .accessibilityHint(Text(tab.accessibilityHint))
     }
 }
 
 #if DEBUG
 #Preview("Technician AppShell") {
     TechnicianAppShellView(
-        user: User(
-            id: UserID("technician-preview"),
-            email: "tech@example.com",
-            fullName: "Teknisyen Önizleme",
-            role: .technician,
-            createdAt: Date(),
-            updatedAt: Date()
-        ),
+        user: TechnicianPreviewData.technician,
+        dependencies: DIContainer.mock().makeTechnicianDependencies(),
         onLogout: {}
     )
 }

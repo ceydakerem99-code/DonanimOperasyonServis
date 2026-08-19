@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Technician bottom tabs — Teknisyen mobil prototip.
 enum TechnicianTab: String, Hashable, CaseIterable, Sendable {
     case home
     case workOrders
@@ -37,9 +36,9 @@ extension TechnicianTab {
     }
 }
 
-enum TechnicianDestination: String, Hashable, Sendable, CaseIterable {
-    case workOrderDetail
-    case serviceReport
+enum TechnicianDestination: Hashable, Sendable {
+    case workOrderDetail(WorkOrderID)
+    case serviceReport(WorkOrderID)
 }
 
 extension TechnicianDestination {
@@ -58,13 +57,5 @@ enum TechnicianNavigationConfiguration {
         TechnicianTab.allCases.map {
             CustomTabBarItem(tab: $0, title: $0.title, systemImage: $0.systemImage)
         }
-    }
-
-    static func rootSubtitle(for tab: TechnicianTab) -> String {
-        "Teknisyen — \(tab.title) navigation skeleton (Faz 7)."
-    }
-
-    static func destinationSubtitle(for destination: TechnicianDestination) -> String {
-        "Teknisyen — \(destination.title) placeholder."
     }
 }

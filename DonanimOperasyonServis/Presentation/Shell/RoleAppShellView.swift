@@ -18,7 +18,11 @@ struct RoleAppShellView: View {
                 onLogout: onLogout
             )
         case .technician:
-            TechnicianAppShellView(user: user, onLogout: onLogout)
+            TechnicianAppShellView(
+                user: user,
+                dependencies: container.makeTechnicianDependencies(),
+                onLogout: onLogout
+            )
         }
     }
 }

@@ -61,8 +61,9 @@ final class AppShellRoutingTests: XCTestCase {
 
     func testTechnicianRouterWorkOrderDetailDestination() {
         let router = TechnicianAppRouter(selectedTab: .home)
-        router.push(.workOrderDetail)
-        XCTAssertEqual(router.path, [.workOrderDetail])
+        let id = WorkOrderID("wo-tech-test")
+        router.push(.workOrderDetail(id))
+        XCTAssertEqual(router.path, [.workOrderDetail(id)])
     }
 
     func testRoleIsolationUsesDistinctTabSets() {
