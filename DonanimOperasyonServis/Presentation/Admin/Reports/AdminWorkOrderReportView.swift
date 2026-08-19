@@ -53,6 +53,8 @@ struct AdminWorkOrderReportView: View {
 
                 SectionHeader(title: "Ekler")
                 attachmentRow(title: "Servis Notları", count: content.noteCount, systemImage: "note.text")
+                attachmentRow(title: "İmzalar", count: content.signatureCount, systemImage: "pencil.and.scribble")
+                attachmentRow(title: "Fotoğraflar", count: content.photoCount, systemImage: "camera")
             }
             .padding(AppSpacing.l)
         }

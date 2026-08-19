@@ -5,6 +5,8 @@ struct AdminWorkOrderReportContent: Equatable, Sendable {
     let workOrder: WorkOrder
     let customerName: String
     let noteCount: Int
+    let signatureCount: Int
+    let photoCount: Int
 }
 
 @Observable
@@ -33,14 +35,21 @@ final class AdminWorkOrderReportViewModel {
         phase = .loading
         do {
             let order = try await dependencies.getSystemWorkOrder.execute(actor: actor, id: workOrderId)
-            let customer = try await dependencies.customerRepository.fetch(id: order.customerId)
+            let customerName = (try? await dependencies.customerRepository.fetch(id: order.customerId))?.name
+                ?? "Bilinmeyen müşteri"
             let notes = try await dependencies.workOrderNoteRepository.list(for: order.id)
+            let signatures = (try? await dependencies.signatureRepository.list(for: order.id)) ?? []
+            let photos = (try? await dependencies.workOrderPhotoRepository.list(for: order.id)) ?? []
             content = AdminWorkOrderReportContent(
                 workOrder: order,
-                customerName: customer.name,
-                noteCount: notes.count
+                customerName: customerName,
+                noteCount: notes.count,
+                signatureCount: signatures.count,
+                photoCount: photos.count
             )
             phase = .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.adminMessage)
         } catch {
@@ -78,7 +87,9 @@ extension AdminWorkOrderReportViewModel {
                 completedAt: AdminPreviewData.referenceDate
             ),
             customerName: "ABC Market",
-            noteCount: 3
+            noteCount: 3,
+            signatureCount: 1,
+            photoCount: 2
         )
         return vm
     }

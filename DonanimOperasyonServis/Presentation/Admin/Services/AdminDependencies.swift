@@ -10,6 +10,8 @@ struct AdminDependencies: Sendable {
     let userRepository: UserRepository
     let customerRepository: CustomerRepository
     let workOrderNoteRepository: WorkOrderNoteRepository
+    let workOrderPhotoRepository: WorkOrderPhotoRepository
+    let signatureRepository: SignatureRepository
     let notificationRepository: NotificationRepository
     let syncOperationRepository: SyncOperationRepository
     let syncConflictRepository: SyncConflictRepository
@@ -30,6 +32,8 @@ extension DIContainer {
             userRepository: userRepository,
             customerRepository: customerRepository,
             workOrderNoteRepository: workOrderNoteRepository,
+            workOrderPhotoRepository: workOrderPhotoRepository,
+            signatureRepository: signatureRepository,
             notificationRepository: notificationRepository,
             syncOperationRepository: syncOperationRepository,
             syncConflictRepository: syncConflictRepository,

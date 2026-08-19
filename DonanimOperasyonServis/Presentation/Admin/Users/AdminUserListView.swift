@@ -9,6 +9,19 @@ struct AdminUserListView: View {
             VStack(alignment: .leading, spacing: AppSpacing.m) {
                 searchField
                 filterChips
+                if let role = viewModel.roleFilter {
+                    HStack {
+                        Text("Rol: \(role.displayName)")
+                            .font(AppFont.caption)
+                            .foregroundStyle(AppColor.secondaryText)
+                        Spacer()
+                        Button("Temizle") {
+                            Task { await viewModel.applyRoleFilter(nil) }
+                        }
+                        .font(AppFont.label)
+                        .foregroundStyle(AppColor.brandPrimary)
+                    }
+                }
 
                 switch viewModel.phase {
                 case .loading:

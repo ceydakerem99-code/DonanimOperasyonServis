@@ -29,6 +29,9 @@ struct AdminReportDetailView: View {
                     if !viewModel.statusBreakdown.isEmpty {
                         statusBreakdownSection
                     }
+                    if !viewModel.relatedWorkOrders.isEmpty {
+                        relatedWorkOrdersSection
+                    }
                 }
             }
             .padding(.horizontal, AppSpacing.l)
@@ -50,8 +53,10 @@ struct AdminReportDetailView: View {
                             .font(AppFont.caption)
                             .foregroundStyle(AppColor.secondaryText)
                         Text(metric.value)
-                            .font(AppFont.title)
+                            .font(AppFont.body)
                             .foregroundStyle(AppColor.primaryText)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.8)
                     }
                     .padding(AppSpacing.m)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,6 +92,49 @@ struct AdminReportDetailView: View {
                 .padding(AppSpacing.m)
                 .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
             }
+        }
+    }
+
+    private var relatedWorkOrdersSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.m) {
+            SectionHeader(title: relatedSectionTitle)
+            ForEach(viewModel.relatedWorkOrders) { item in
+                Button {
+                    onSelectWorkOrder?(item.id)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                            Text(item.workOrderNumber)
+                                .font(AppFont.subtitle)
+                                .foregroundStyle(AppColor.primaryText)
+                            Text(item.subtitle)
+                                .font(AppFont.caption)
+                                .foregroundStyle(AppColor.secondaryText)
+                        }
+                        Spacer()
+                        if item.count > 0 {
+                            Text("\(item.count)")
+                                .font(AppFont.caption)
+                                .foregroundStyle(AppColor.secondaryText)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(AppFont.label)
+                            .foregroundStyle(AppColor.secondaryText)
+                    }
+                    .padding(AppSpacing.m)
+                    .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var relatedSectionTitle: String {
+        switch viewModel.kind {
+        case .signatures: return "İmzalı İş Emirleri"
+        case .photos: return "Fotoğraflı İş Emirleri"
+        case .workOrders: return "İş Emirleri"
+        default: return "İlgili Kayıtlar"
         }
     }
 }

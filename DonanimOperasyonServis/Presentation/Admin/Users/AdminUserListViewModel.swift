@@ -45,6 +45,7 @@ final class AdminUserListViewModel {
     private(set) var rows: [AdminUserRowData] = []
     var searchText = ""
     private(set) var selectedFilter: AdminUserListFilter = .all
+    private(set) var roleFilter: UserRole?
 
     private let actor: User
     private let dependencies: AdminDependencies
@@ -60,11 +61,14 @@ final class AdminUserListViewModel {
         do {
             let users = try await dependencies.listUsers.execute(
                 actor: actor,
+                role: roleFilter,
                 isActive: selectedFilter.isActive
             )
             allRows = users.map(Self.mapRow)
             applySearch()
             phase = rows.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.adminMessage)
         } catch {
@@ -74,6 +78,11 @@ final class AdminUserListViewModel {
 
     func selectFilter(_ filter: AdminUserListFilter) async {
         selectedFilter = filter
+        await load()
+    }
+
+    func applyRoleFilter(_ role: UserRole?) async {
+        roleFilter = role
         await load()
     }
 

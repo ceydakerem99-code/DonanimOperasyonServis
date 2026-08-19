@@ -22,6 +22,44 @@ struct AdminUserDetailView: View {
         .navigationTitle("Kullanıcı Detayı")
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
+        .confirmationDialog(
+            activeConfirmationTitle,
+            isPresented: $viewModel.showsActiveConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(activeConfirmationActionTitle, role: .destructive) {
+                Task { await viewModel.confirmToggleActive() }
+            }
+            Button("İptal", role: .cancel) {}
+        } message: {
+            Text("Bu işlem kullanıcının giriş ve yetki durumunu etkiler.")
+        }
+        .confirmationDialog(
+            "Rolü değiştir",
+            isPresented: $viewModel.showsRoleConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Onayla", role: .destructive) {
+                Task { await viewModel.confirmRoleChange() }
+            }
+            Button("İptal", role: .cancel) {
+                viewModel.pendingRole = nil
+            }
+        } message: {
+            if let role = viewModel.pendingRole {
+                Text("Yeni rol: \(role.displayName)")
+            }
+        }
+    }
+
+    private var activeConfirmationTitle: String {
+        guard let user = viewModel.content?.user else { return "Durumu değiştir" }
+        return user.isActive ? "Kullanıcıyı pasifleştir?" : "Kullanıcıyı aktifleştir?"
+    }
+
+    private var activeConfirmationActionTitle: String {
+        guard let user = viewModel.content?.user else { return "Onayla" }
+        return user.isActive ? "Pasifleştir" : "Aktifleştir"
     }
 
     @ViewBuilder
@@ -44,6 +82,33 @@ struct AdminUserDetailView: View {
                     )
                 }
 
+                profileCard(title: "Rol Değiştir") {
+                    ForEach(UserRole.allCases, id: \.self) { role in
+                        Button {
+                            viewModel.requestRoleChange(role)
+                        } label: {
+                            HStack {
+                                Text(role.displayName)
+                                    .font(AppFont.body)
+                                    .foregroundStyle(AppColor.primaryText)
+                                Spacer()
+                                if content.user.role == role {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(AppColor.success)
+                                }
+                            }
+                            .frame(minHeight: AppSpacing.minimumTouchTarget)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.isUpdating || content.user.role == role || viewModel.isViewingSelf)
+                    }
+                    if viewModel.isViewingSelf {
+                        Text("Kendi rolünüzü değiştiremezsiniz.")
+                            .font(AppFont.caption)
+                            .foregroundStyle(AppColor.secondaryText)
+                    }
+                }
+
                 profileCard(title: "Yetkiler (Salt Okunur)") {
                     ForEach(content.permissions, id: \.self) { action in
                         permissionRow(action.adminDisplayName, granted: true)
@@ -54,18 +119,41 @@ struct AdminUserDetailView: View {
                     }
                 }
 
+                profileCard(title: "Güvenlik") {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                        HStack {
+                            Image(systemName: "key")
+                                .foregroundStyle(AppColor.secondaryText)
+                                .frame(width: 24)
+                            Text("Şifre Sıfırla")
+                                .font(AppFont.body)
+                                .foregroundStyle(AppColor.secondaryText)
+                            Spacer()
+                        }
+                        Text(viewModel.passwordResetUnsupportedMessage)
+                            .font(AppFont.caption)
+                            .foregroundStyle(AppColor.secondaryText)
+                    }
+                    .frame(minHeight: AppSpacing.minimumTouchTarget)
+                    .accessibilityLabel("Şifre Sıfırla, \(AdminUnsupportedAction.message)")
+                }
+
                 if let message = viewModel.actionMessage {
                     Text(message)
                         .font(AppFont.caption)
-                        .foregroundStyle(AppColor.secondaryText)
+                        .foregroundStyle(
+                            message == AdminUnsupportedAction.message
+                                ? AppColor.secondaryText
+                                : AppColor.secondaryText
+                        )
                 }
 
                 DestructiveButton(
                     title: content.user.isActive ? "Pasifleştir" : "Aktifleştir",
                     systemImage: content.user.isActive ? "person.crop.circle.badge.xmark" : "person.crop.circle.badge.checkmark",
-                    isEnabled: !viewModel.isUpdating
+                    isEnabled: !viewModel.isUpdating && !viewModel.isViewingSelf
                 ) {
-                    Task { await viewModel.toggleActiveState() }
+                    viewModel.requestToggleActive()
                 }
             }
             .padding(.horizontal, AppSpacing.l)

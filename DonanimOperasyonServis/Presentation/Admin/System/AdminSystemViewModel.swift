@@ -52,6 +52,8 @@ final class AdminSystemViewModel {
                 isOnline: online
             )
             phase = .loaded
+        } catch is CancellationError {
+            return
         } catch let error as DomainError {
             phase = .error(error.adminMessage)
         } catch {

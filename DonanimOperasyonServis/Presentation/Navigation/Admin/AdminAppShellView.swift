@@ -44,7 +44,32 @@ struct AdminAppShellView: View {
     private func adminRoot(for tab: AdminTab) -> some View {
         switch tab {
         case .dashboard:
-            AdminDashboardView(viewModel: dashboardViewModel)
+            AdminDashboardView(
+                viewModel: dashboardViewModel,
+                onShowUsers: { role in
+                    Task {
+                        await userListViewModel.applyRoleFilter(role)
+                        router.selectedTab = .users
+                    }
+                },
+                onShowReports: { kind in
+                    router.selectedTab = .reports
+                    Task { @MainActor in
+                        await Task.yield()
+                        router.push(.reportDetail(kind))
+                    }
+                },
+                onShowConflicts: {
+                    router.selectedTab = .system
+                    Task { @MainActor in
+                        await Task.yield()
+                        router.push(.conflicts)
+                    }
+                },
+                onSelectWorkOrder: { id in
+                    router.push(.workOrderReport(id))
+                }
+            )
 
         case .users:
             AdminUserListView(
@@ -61,6 +86,7 @@ struct AdminAppShellView: View {
         case .system:
             AdminSystemView(
                 viewModel: systemViewModel,
+                currentUser: user,
                 onShowWorkTypes: { router.push(.workTypes) },
                 onShowPauseReasons: { router.push(.pauseReasons) },
                 onShowConflicts: { router.push(.conflicts) },

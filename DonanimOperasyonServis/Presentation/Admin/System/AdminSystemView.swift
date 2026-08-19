@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AdminSystemView: View {
     @Bindable var viewModel: AdminSystemViewModel
+    let currentUser: User
     var onShowWorkTypes: () -> Void
     var onShowPauseReasons: () -> Void
     var onShowConflicts: () -> Void
@@ -23,6 +24,7 @@ struct AdminSystemView: View {
                 case .loaded:
                     appInfoCard
                     syncHealthCard
+                    accountSection
                     menuSection(title: "Genel") {
                         menuRow(title: "Uygulama Sürümü", value: viewModel.appVersion, systemImage: "info.circle")
                         menuRow(
@@ -95,6 +97,21 @@ struct AdminSystemView: View {
         .padding(AppSpacing.m)
         .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
+    }
+
+    private var accountSection: some View {
+        menuSection(title: "Profil / Hesap") {
+            InfoRow(title: "Ad Soyad", value: currentUser.fullName, systemImage: "person")
+            InfoRow(title: "E-posta", value: currentUser.email, systemImage: "envelope")
+            InfoRow(title: "Rol", value: UserRole.admin.displayName, systemImage: "shield")
+            ProfileUnsupportedRow(title: "Bildirim Ayarları", systemImage: "bell")
+            ProfileUnsupportedRow(title: "Şifre / Güvenlik", systemImage: "lock")
+            ProfileUnsupportedRow(title: "Dil", systemImage: "globe", value: "Türkçe")
+            Text(AdminUnsupportedAction.message)
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.secondaryText)
+                .padding(.top, AppSpacing.xs)
+        }
     }
 
     private func healthMetric(title: String, value: Int) -> some View {
@@ -171,6 +188,7 @@ struct AdminSystemView: View {
     NavigationStack {
         AdminSystemView(
             viewModel: .previewLoaded(),
+            currentUser: AdminPreviewData.adminUser,
             onShowWorkTypes: {},
             onShowPauseReasons: {},
             onShowConflicts: {},
