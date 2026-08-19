@@ -14,7 +14,8 @@ import SwiftData
 /// reconciliation. Phase 5E adds `ConflictResolver` for explicit
 /// `useLocal` / `useRemote` / `unresolved` decisions. Phase 5F
 /// adds network reachability, manual retry via `SyncRetryPolicy`,
-/// and in-progress recovery. There is still no background scheduler.
+/// and in-progress recovery. Phase 5G adds lifecycle + background
+/// sync coordination on top of the existing SyncManager.
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
 ///   the SwiftData implementations used by the running app.
@@ -56,6 +57,8 @@ final class DIContainer: Sendable {
     let conflictResolver: any ConflictResolving
     let networkReachability: any NetworkReachabilityProviding
     let syncRecoveryHandler: any SyncRecoveryHandling
+    let backgroundSyncScheduler: any BackgroundSyncScheduling
+    let syncCoordinator: any SyncLifecycleCoordinating
 
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
@@ -88,10 +91,31 @@ final class DIContainer: Sendable {
                 firestoreDataSource: LiveFirestoreDataSource(),
                 storageDataSource: LiveFirebaseStorageDataSource(),
                 firebaseBootstrapOutcome: outcome,
-                networkReachability: makeLiveReachability()
+                networkReachability: makeLiveReachability(),
+                backgroundSyncScheduler: SystemBackgroundSyncScheduler()
             )
         case .skippedNoConfig, .skippedInvalidConfig:
             throw FirebaseError.notConfigured
+        }
+    }
+
+    /// Release/live: Firebase config is required; missing plist is a
+    /// hard failure. DEBUG (previews / XCTest host): fall back to the
+    /// in-memory container so the test host can launch without a real
+    /// Firebase project. `live()` itself never wires Fake data sources.
+    static func bootstrap() -> DIContainer {
+        do {
+            return try live()
+        } catch {
+            #if DEBUG
+            if error as? FirebaseError == .notConfigured {
+                AppLogger.app.warning(
+                    "Firebase not configured; DEBUG/test host using DIContainer.mock()."
+                )
+                return .mock()
+            }
+            #endif
+            fatalError("Failed to construct DIContainer: \(error)")
         }
     }
 
@@ -106,7 +130,8 @@ final class DIContainer: Sendable {
                 firestoreDataSource: FakeFirestoreDataSource(),
                 storageDataSource: FakeFirebaseStorageDataSource(),
                 firebaseBootstrapOutcome: .skippedNoConfig,
-                networkReachability: FakeNetworkReachability()
+                networkReachability: FakeNetworkReachability(),
+                backgroundSyncScheduler: FakeBackgroundSyncScheduler()
             )
         } catch {
             fatalError("Failed to construct in-memory DIContainer: \(error)")
@@ -118,7 +143,8 @@ final class DIContainer: Sendable {
         firestoreDataSource: any FirestoreDataSource,
         storageDataSource: any FirebaseStorageDataSource,
         firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome,
-        networkReachability: any NetworkReachabilityProviding
+        networkReachability: any NetworkReachabilityProviding,
+        backgroundSyncScheduler: any BackgroundSyncScheduling
     ) {
         let store = LocalPersistence(modelContainer: modelContainer)
         self.modelContainer = modelContainer
@@ -200,6 +226,13 @@ final class DIContainer: Sendable {
         )
         self.syncRecoveryHandler = LocalSyncRecoveryHandler(
             queue: self.syncOperationRepository
+        )
+        self.backgroundSyncScheduler = backgroundSyncScheduler
+        self.syncCoordinator = SyncLifecycleCoordinator(
+            syncManager: self.syncManager,
+            recovery: self.syncRecoveryHandler,
+            reachability: networkReachability,
+            scheduler: backgroundSyncScheduler
         )
     }
 

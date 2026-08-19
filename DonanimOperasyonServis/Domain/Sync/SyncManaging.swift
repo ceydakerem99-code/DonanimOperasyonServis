@@ -5,9 +5,9 @@ import Foundation
 /// Implementations must not talk to SwiftUI, must not open a
 /// `ModelContext`, and must not import Firebase. Callers invoke this
 /// manually (`syncPending()`); there is no launch/background
-/// scheduler in this phase. Reachability is supplied by
-/// `NetworkReachabilityProviding` — the manager never measures the
-/// path itself.
+/// scheduler in this type. Phase 5G's `SyncLifecycleCoordinator`
+/// is what invokes `syncPending()` from launch, foreground, network
+/// recovery, and `BGAppRefreshTask`.
 protocol SyncManaging: Sendable {
     @discardableResult
     func syncPending(now: Date) async throws -> SyncDrainOutcome

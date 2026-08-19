@@ -49,5 +49,13 @@
 	<string>Servis fotoğraflarını gerektiğinde fotoğraf kütüphanesine kaydetmek için erişim gereklidir.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.donanimoperasyonservis.app.sync</string>
+	</array>
 </dict>
 </plist>
