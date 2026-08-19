@@ -21,7 +21,6 @@ extension AppPriority {
         }
     }
 
-    @MainActor
     var accentColor: Color {
         switch self {
         case .normal: return AppColor.priorityNormal

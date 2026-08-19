@@ -32,7 +32,6 @@ extension AppStatus {
         }
     }
 
-    @MainActor
     var accentColor: Color {
         switch self {
         case .assigned:   return AppColor.statusAssigned
