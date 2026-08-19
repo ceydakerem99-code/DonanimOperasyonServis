@@ -8,7 +8,7 @@ enum SyncConflictResolutionChoice: String, CaseIterable, Hashable, Sendable, Cod
 }
 
 /// Lifecycle of a detected conflict. 5A only models `unresolved`;
-/// applying a choice is Phase 5D.
+/// applying a choice is a later phase (`ConflictResolver`).
 enum SyncConflictStatus: String, CaseIterable, Hashable, Sendable, Codable {
     case unresolved
 }

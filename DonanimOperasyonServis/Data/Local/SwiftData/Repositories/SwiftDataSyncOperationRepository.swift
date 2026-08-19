@@ -57,4 +57,8 @@ struct SwiftDataSyncOperationRepository: SyncOperationRepository {
     func prepareRetry(id: SyncOperationID) async throws {
         try await store.prepareSyncOperationRetry(id: id.rawValue)
     }
+
+    func list(entityType: SyncEntityType, entityId: String) async throws -> [SyncOperation] {
+        try await store.listSyncOperations(entityType: entityType.rawValue, entityId: entityId)
+    }
 }

@@ -43,4 +43,8 @@ protocol SyncOperationRepository: Sendable {
     /// This reset is **not** a state-machine transition (see
     /// `SyncStatus.isTerminal`). No-op when already `.pending`.
     func prepareRetry(id: SyncOperationID) async throws
+    /// Every queue row for this entity, including succeeded.
+    /// Reconciliation uses this to detect pending mutations without
+    /// deleting anything.
+    func list(entityType: SyncEntityType, entityId: String) async throws -> [SyncOperation]
 }

@@ -420,6 +420,21 @@ actor LocalPersistence {
         }
     }
 
+    func listSyncOperations(entityType: String, entityId: String) throws -> [SyncOperation] {
+        let rows = try modelContext.fetch(
+            FetchDescriptor<SyncOperationModel>(
+                predicate: #Predicate {
+                    $0.entityTypeRaw == entityType && $0.entityId == entityId
+                },
+                sortBy: [
+                    SortDescriptor(\.createdAt),
+                    SortDescriptor(\.id)
+                ]
+            )
+        )
+        return try decodedSyncOperations(rows)
+    }
+
     func updateSyncOperation(_ operation: SyncOperation) throws {
         let rawId = operation.id.rawValue
         guard let existing = try firstModel(
