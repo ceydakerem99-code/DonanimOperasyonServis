@@ -2,28 +2,51 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(\.diContainer) private var container
+    @State private var authSession: AuthSessionController?
 
     var body: some View {
-        VStack(spacing: AppSpacing.l) {
-            Image(systemName: "wrench.and.screwdriver.fill")
-                .font(.system(size: 48, weight: .semibold))
-                .foregroundStyle(AppColor.brandPrimary)
-
-            Text("Donanım Operasyon ve Servis")
-                .font(AppFont.title)
-                .foregroundStyle(AppColor.primaryText)
-                .multilineTextAlignment(.center)
-
-            Text("Faz 1 — Design System hazır.")
-                .font(AppFont.caption)
-                .foregroundStyle(AppColor.secondaryText)
+        Group {
+            if let authSession {
+                routedContent(for: authSession)
+            } else {
+                LoadingView(message: "Oturum kontrol ediliyor...")
+            }
         }
-        .padding(AppSpacing.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColor.neutralBackground)
         .task {
-            AppLogger.app.info("RootView appeared; DI container ready.")
-            _ = container
+            if authSession == nil {
+                let controller = container.makeAuthSessionController()
+                authSession = controller
+                await controller.start()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func routedContent(for session: AuthSessionController) -> some View {
+        switch session.state {
+        case .checkingSession:
+            LoadingView(message: "Oturum kontrol ediliyor...")
+
+        case .unauthenticated, .authenticationError:
+            LoginView(session: session)
+
+        case .authenticated(let user):
+            authenticatedRoot(for: user, session: session)
+        }
+    }
+
+    @ViewBuilder
+    private func authenticatedRoot(for user: User, session: AuthSessionController) -> some View {
+        let logout: () -> Void = {
+            Task { await session.signOut() }
+        }
+        switch user.role {
+        case .admin:
+            AdminRootPlaceholder(user: user, onLogout: logout)
+        case .operator:
+            OperatorRootPlaceholder(user: user, onLogout: logout)
+        case .technician:
+            TechnicianRootPlaceholder(user: user, onLogout: logout)
         }
     }
 }

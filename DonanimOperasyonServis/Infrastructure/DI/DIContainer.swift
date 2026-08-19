@@ -15,15 +15,15 @@ import SwiftData
 /// `useLocal` / `useRemote` / `unresolved` decisions. Phase 5F
 /// adds network reachability, manual retry via `SyncRetryPolicy`,
 /// and in-progress recovery. Phase 5G adds lifecycle + background
-/// sync coordination on top of the existing SyncManager.
+/// sync coordination on top of the existing SyncManager. Phase 6
+/// wires Firebase Authentication, session restore, and role routing.
 ///
 /// - `userRepository` (and siblings without a `remote` prefix) stay
-///   the SwiftData implementations used by the running app.
 /// - `remoteUserRepository` (and siblings) are the Firebase
 ///   implementations, ready for SyncManager to consume.
 ///
-/// `AuthRepository` remains the Phase 3 local-session placeholder.
-/// Firebase Auth is Phase 6 and is not wired here.
+/// `AuthRepository` uses Firebase Auth in live builds and
+/// `FakeAuthRepository` in mock/test builds.
 final class DIContainer: Sendable {
 
     let modelContainer: ModelContainer
@@ -60,6 +60,10 @@ final class DIContainer: Sendable {
     let backgroundSyncScheduler: any BackgroundSyncScheduling
     let syncCoordinator: any SyncLifecycleCoordinating
 
+    // MARK: Auth session (Phase 6)
+
+    let authService: any FirebaseAuthServing
+
     // MARK: Remote (Firebase) repositories — Phase 5 SyncManager input
 
     let remoteUserRepository: any UserRepository
@@ -92,7 +96,8 @@ final class DIContainer: Sendable {
                 storageDataSource: LiveFirebaseStorageDataSource(),
                 firebaseBootstrapOutcome: outcome,
                 networkReachability: makeLiveReachability(),
-                backgroundSyncScheduler: SystemBackgroundSyncScheduler()
+                backgroundSyncScheduler: SystemBackgroundSyncScheduler(),
+                authService: LiveFirebaseAuthService()
             )
         case .skippedNoConfig, .skippedInvalidConfig:
             throw FirebaseError.notConfigured
@@ -131,7 +136,8 @@ final class DIContainer: Sendable {
                 storageDataSource: FakeFirebaseStorageDataSource(),
                 firebaseBootstrapOutcome: .skippedNoConfig,
                 networkReachability: FakeNetworkReachability(),
-                backgroundSyncScheduler: FakeBackgroundSyncScheduler()
+                backgroundSyncScheduler: FakeBackgroundSyncScheduler(),
+                authService: FakeFirebaseAuthService()
             )
         } catch {
             fatalError("Failed to construct in-memory DIContainer: \(error)")
@@ -144,7 +150,8 @@ final class DIContainer: Sendable {
         storageDataSource: any FirebaseStorageDataSource,
         firebaseBootstrapOutcome: FirebaseAppBootstrapper.Outcome,
         networkReachability: any NetworkReachabilityProviding,
-        backgroundSyncScheduler: any BackgroundSyncScheduling
+        backgroundSyncScheduler: any BackgroundSyncScheduling,
+        authService: any FirebaseAuthServing
     ) {
         let store = LocalPersistence(modelContainer: modelContainer)
         self.modelContainer = modelContainer
@@ -157,7 +164,6 @@ final class DIContainer: Sendable {
         )
 
         self.userRepository                     = SwiftDataUserRepository(store: store)
-        self.authRepository                     = SwiftDataAuthRepository(store: store)
         self.customerRepository                 = SwiftDataCustomerRepository(store: store)
         self.workOrderRepository                = SwiftDataWorkOrderRepository(store: store)
         self.workOrderNoteRepository            = SwiftDataWorkOrderNoteRepository(store: store)
@@ -204,6 +210,20 @@ final class DIContainer: Sendable {
         self.remoteSignatureRepository                = remoteEntities.signatures
         self.remoteEditRequestRepository              = remoteEntities.editRequests
         self.remoteNotificationRepository             = remoteEntities.notifications
+        self.authService = authService
+        if authService is FakeFirebaseAuthService {
+            self.authRepository = FakeAuthRepository(
+                store: store,
+                localUsers: self.userRepository
+            )
+        } else {
+            self.authRepository = FirebaseAuthRepository(
+                authService: authService,
+                remoteUsers: remoteEntities.users,
+                localUsers: self.userRepository,
+                store: store
+            )
+        }
         self.networkReachability = networkReachability
         self.syncManager = LocalToRemoteSyncManager(
             queue: self.syncOperationRepository,
@@ -240,5 +260,19 @@ final class DIContainer: Sendable {
         let monitor = PathMonitorNetworkReachability()
         monitor.start()
         return monitor
+    }
+
+    @MainActor
+    func makeAuthSessionController() -> AuthSessionController {
+        AuthSessionController(authRepository: authRepository)
+    }
+
+    /// Mock/test auth repository with session persistence. Tests can
+    /// cast `authRepository` to seed credentials.
+    static func makeMockAuthRepository(
+        store: LocalPersistence,
+        localUsers: any UserRepository
+    ) -> FakeAuthRepository {
+        FakeAuthRepository(store: store, localUsers: localUsers)
     }
 }

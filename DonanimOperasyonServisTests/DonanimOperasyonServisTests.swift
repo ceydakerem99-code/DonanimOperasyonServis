@@ -46,6 +46,8 @@ final class DonanimOperasyonServisTests: XCTestCase {
         XCTAssertNotNil(container.backgroundSyncScheduler)
         XCTAssertNotNil(container.syncCoordinator)
         XCTAssertTrue(container.backgroundSyncScheduler is FakeBackgroundSyncScheduler)
+        XCTAssertTrue(container.authRepository is FakeAuthRepository)
+        XCTAssertTrue(container.authService is FakeFirebaseAuthService)
         XCTAssertNotNil(container.remoteUserRepository)
         XCTAssertNotNil(container.remoteCustomerRepository)
         XCTAssertNotNil(container.remoteWorkOrderRepository)

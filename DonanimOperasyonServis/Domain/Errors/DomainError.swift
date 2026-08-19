@@ -39,6 +39,11 @@ enum DomainError: Error, Hashable, Sendable {
     /// A referenced entity could not be found.
     case notFound(entity: String, id: String)
 
+    /// Firebase Authentication or session bootstrap failed before an
+    /// application session could be established. Distinct from
+    /// `.unauthorized(action:)` which covers RBAC after login.
+    case authenticationFailed(AuthenticationFailureReason)
+
     /// A generic domain validation error (empty required field,
     /// pause without a reason, etc.).
     case invalidData(reason: String)
@@ -53,6 +58,17 @@ enum DomainError: Error, Hashable, Sendable {
 }
 
 extension DomainError {
+    /// Subcases explaining why sign-in or session restore failed.
+    enum AuthenticationFailureReason: String, Hashable, Sendable {
+        case invalidCredentials
+        case userNotFound
+        case networkUnavailable
+        case tooManyRequests
+        case unauthorized
+        case userDocumentMissing
+        case unknown
+    }
+
     /// Subcases explaining why an `EditRequest` payload was rejected.
     enum InvalidEditRequestReason: String, Hashable, Sendable {
         /// `currentValue` matches `requestedValue`.

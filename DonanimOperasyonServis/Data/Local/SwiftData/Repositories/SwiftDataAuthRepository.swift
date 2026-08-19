@@ -3,21 +3,9 @@ import Foundation
 /// SwiftData-backed local session manager that satisfies
 /// `AuthRepository`.
 ///
-/// This is a **v3 stand-in** for the eventual Firebase Auth
-/// implementation:
-///
-/// - `currentUser()` reads the `LocalSessionModel` row and joins it
-///   back to a `UserModel`.
-/// - `signIn(email:password:)` looks the user up by email in the
-///   local store and marks them as the current session. The
-///   `password` argument is accepted for API stability but is not
-///   verified here — password verification will move to Firebase
-///   Authentication in a later phase, and this repository will then
-///   be replaced by a Firebase-backed implementation. Callers that
-///   rely on real authentication must not use this repository
-///   outside of tests and offline scenarios.
-/// - `signOut()` clears the session pointer without touching any
-///   cached user rows.
+/// Phase 3 stand-in for offline/tests. Password verification is not
+/// performed here — use `FakeAuthRepository` or
+/// `FirebaseAuthRepository` for real authentication flows.
 struct SwiftDataAuthRepository: AuthRepository {
 
     let store: LocalPersistence
@@ -31,18 +19,23 @@ struct SwiftDataAuthRepository: AuthRepository {
         self.clock = clock
     }
 
+    func restoreSession(now: Date) async throws -> User? {
+        try await currentUser()
+    }
+
     func currentUser() async throws -> User? {
         guard let userId = try await store.currentSessionUserId() else {
             return nil
         }
-        // The referenced user row may have been deleted; treat that as
-        // "no current user" rather than a hard error so a stale
-        // session does not brick the app.
         return try await store.fetchUser(id: userId)
     }
 
+    func refreshCurrentUser(now: Date) async throws -> User? {
+        try await currentUser()
+    }
+
     func signIn(email: String, password: String) async throws -> User {
-        _ = password  // See type docs: password is a Firebase concern.
+        _ = password
         guard let user = try await store.findUserByEmail(email) else {
             throw DomainError.notFound(entity: "User", id: email)
         }
@@ -52,5 +45,9 @@ struct SwiftDataAuthRepository: AuthRepository {
 
     func signOut() async throws {
         try await store.setCurrentSessionUserId(nil, at: clock())
+    }
+
+    func authStateChanges() async -> AsyncStream<AuthSessionEvent> {
+        AsyncStream { $0.finish() }
     }
 }

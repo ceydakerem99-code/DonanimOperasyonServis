@@ -16,6 +16,8 @@ enum SyncErrorMapping {
         switch domain {
         case .unauthorized:
             return .unauthorized
+        case .authenticationFailed:
+            return .unauthorized
         case .notFound:
             return .notFound
         case .invalidData,
