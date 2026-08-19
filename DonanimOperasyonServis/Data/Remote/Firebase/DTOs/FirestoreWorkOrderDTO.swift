@@ -77,10 +77,15 @@ extension FirestoreWorkOrderDTO {
         }
 
         let range: ScheduledTimeRange?
-        if let start = scheduledStart, let end = scheduledEnd {
-            range = ScheduledTimeRange(uncheckedStart: start, end: end)
-        } else {
+        switch (scheduledStart, scheduledEnd) {
+        case (nil, nil):
             range = nil
+        case (let start?, let end?):
+            guard let valid = ScheduledTimeRange(start: start, end: end) else { return nil }
+            range = valid
+        default:
+            // Only one bound present — refuse to silently drop the range.
+            return nil
         }
 
         return WorkOrder(

@@ -64,28 +64,24 @@ final class DIContainer: Sendable {
 
     /// Live container used by the running application.
     ///
-    /// Throws when the disk-backed SwiftData store cannot be opened.
-    /// Firebase is bootstrapped opportunistically: a missing
-    /// `GoogleService-Info.plist` (the Phase 4 default) falls back
-    /// to in-memory fakes so the app still launches.
+    /// Throws when the disk-backed SwiftData store cannot be opened,
+    /// **or** when Firebase is not configured (`GoogleService-Info.plist`
+    /// missing or unreadable). Live never falls back to Fake
+    /// Firestore/Storage — that path is reserved for `mock()` and
+    /// the unit-test harness.
     static func live() throws -> DIContainer {
         let outcome = FirebaseAppBootstrapper.configure()
-        let firestore: any FirestoreDataSource
-        let storage: any FirebaseStorageDataSource
         switch outcome {
         case .configured, .alreadyConfigured:
-            firestore = LiveFirestoreDataSource()
-            storage = LiveFirebaseStorageDataSource()
+            return try DIContainer(
+                modelContainer: ModelContainerFactory.live(),
+                firestoreDataSource: LiveFirestoreDataSource(),
+                storageDataSource: LiveFirebaseStorageDataSource(),
+                firebaseBootstrapOutcome: outcome
+            )
         case .skippedNoConfig, .skippedInvalidConfig:
-            firestore = FakeFirestoreDataSource()
-            storage = FakeFirebaseStorageDataSource()
+            throw FirebaseError.notConfigured
         }
-        return try DIContainer(
-            modelContainer: ModelContainerFactory.live(),
-            firestoreDataSource: firestore,
-            storageDataSource: storage,
-            firebaseBootstrapOutcome: outcome
-        )
     }
 
     /// In-memory container for previews and unit tests. Always uses

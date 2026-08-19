@@ -3,10 +3,17 @@ import XCTest
 
 final class DonanimOperasyonServisTests: XCTestCase {
 
-    func testDIContainerLiveInstantiates() throws {
-        let container = try DIContainer.live()
-        XCTAssertNotNil(container)
-        XCTAssertNotNil(container.modelContainer)
+    func testDIContainerLiveFailsFastWhenFirebaseIsUnconfigured() {
+        XCTAssertThrowsError(try DIContainer.live()) { error in
+            XCTAssertEqual(error as? FirebaseError, .notConfigured)
+        }
+    }
+
+    func testDIContainerMockStillUsesFakeFirebase() {
+        let container = DIContainer.mock()
+        XCTAssertTrue(container.firestoreDataSource is FakeFirestoreDataSource)
+        XCTAssertTrue(container.firebaseStorageDataSource is FakeFirebaseStorageDataSource)
+        XCTAssertEqual(container.firebaseBootstrapOutcome, .skippedNoConfig)
     }
 
     func testDIContainerMockInstantiates() {

@@ -69,10 +69,10 @@ final class FirebaseUserRepositoryTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(
             try await harness.users.fetch(id: UserID("bad"))
         ) { error in
-            if case .invalidDocument = error as? FirebaseError {
-                // ok
+            if case .invalidData(let reason) = error as? DomainError {
+                XCTAssertTrue(reason.contains("User.decodeFailed"))
             } else {
-                XCTFail("expected invalidDocument, got \(error)")
+                XCTFail("expected DomainError.invalidData, got \(error)")
             }
         }
     }

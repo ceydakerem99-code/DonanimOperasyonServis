@@ -6,9 +6,7 @@ import Foundation
 /// Domain remains the source of truth for *whether* a transition
 /// is legal (`WorkOrderStateMachine`). This type only guarantees
 /// that, once Domain has already produced both values, they land
-/// in Firestore atomically. SwiftData already gets the same
-/// consistency for free because both writes share one
-/// `ModelContext`; Firestore needs an explicit batch.
+/// in Firestore atomically.
 struct FirebaseWorkOrderWriteCoordinator: Sendable {
 
     let dataSource: any FirestoreDataSource
@@ -21,7 +19,7 @@ struct FirebaseWorkOrderWriteCoordinator: Sendable {
         workOrder: WorkOrder,
         statusHistory: WorkOrderStatusHistory
     ) async throws {
-        let writes = try [
+        let writes = [
             FirestoreWrite.set(
                 FirestoreWorkOrderDTO(domain: workOrder),
                 collection: .workOrders,
@@ -33,6 +31,8 @@ struct FirebaseWorkOrderWriteCoordinator: Sendable {
                 id: statusHistory.id
             )
         ]
-        try await dataSource.commit(writes)
+        try await FirebaseRepositoryMapper.run(entity: "WorkOrder", id: workOrder.id.rawValue) {
+            try await dataSource.commit(writes)
+        }
     }
 }

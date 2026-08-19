@@ -83,8 +83,13 @@ actor FakeFirestoreDataSource: FirestoreDataSource {
     func commit(_ writes: [FirestoreWrite]) async throws {
         for write in writes {
             switch write.kind {
-            case .set(let data):
-                documents[DocumentKey(collection: write.collection, id: write.id)] = data
+            case .set(let box):
+                do {
+                    let data = try FirestoreJSON.encoder.encode(box)
+                    documents[DocumentKey(collection: write.collection, id: write.id)] = data
+                } catch {
+                    throw FirebaseError.encodingFailed(reason: String(describing: error))
+                }
             case .delete:
                 documents.removeValue(forKey: DocumentKey(collection: write.collection, id: write.id))
             }

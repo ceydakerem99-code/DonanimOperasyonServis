@@ -12,27 +12,33 @@ struct FirebaseSignatureRepository: SignatureRepository {
     }
 
     func list(for workOrderId: WorkOrderID) async throws -> [Signature] {
-        let dtos = try await dataSource.list(
-            FirestoreSignatureDTO.self,
-            collection: .signatures,
-            predicates: [.equal("workOrderId", .string(workOrderId.rawValue))],
-            orderBy: [.ascending("capturedAt")]
-        )
-        return try dtos.map {
-            try FirebaseRepositoryMapper.requireDomain($0, entity: "Signature") { $0.toDomain() }
+        try await FirebaseRepositoryMapper.run(entity: "Signature", id: workOrderId.rawValue) {
+            let dtos = try await dataSource.list(
+                FirestoreSignatureDTO.self,
+                collection: .signatures,
+                predicates: [.equal("workOrderId", .string(workOrderId.rawValue))],
+                orderBy: [.ascending("capturedAt")]
+            )
+            return try dtos.map {
+                try FirebaseRepositoryMapper.requireDomain($0, entity: "Signature") { $0.toDomain() }
+            }
         }
     }
 
     func save(_ signature: Signature) async throws {
-        try await dataSource.set(
-            FirestoreSignatureDTO(domain: signature),
-            collection: .signatures,
-            id: signature.id
-        )
+        try await FirebaseRepositoryMapper.run(entity: "Signature", id: signature.id) {
+            try await dataSource.set(
+                FirestoreSignatureDTO(domain: signature),
+                collection: .signatures,
+                id: signature.id
+            )
+        }
     }
 
     func delete(id: String, for workOrderId: WorkOrderID) async throws {
         _ = workOrderId
-        try await dataSource.delete(collection: .signatures, id: id)
+        try await FirebaseRepositoryMapper.run(entity: "Signature", id: id) {
+            try await dataSource.delete(collection: .signatures, id: id)
+        }
     }
 }

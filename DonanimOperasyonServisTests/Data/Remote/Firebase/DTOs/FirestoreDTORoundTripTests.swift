@@ -218,4 +218,59 @@ final class FirestoreDTORoundTripTests: XCTestCase {
         )
         XCTAssertNil(dto.toDomain())
     }
+
+    func testScheduledTimeRangeBothNil() {
+        let dto = Self.workOrderDTO(start: nil, end: nil)
+        XCTAssertNotNil(dto.toDomain())
+        XCTAssertNil(dto.toDomain()?.scheduledTimeRange)
+    }
+
+    func testScheduledTimeRangeBothValid() {
+        let start = DomainFixtures.referenceDate
+        let end = start.addingTimeInterval(3_600)
+        let dto = Self.workOrderDTO(start: start, end: end)
+        XCTAssertEqual(dto.toDomain()?.scheduledTimeRange, ScheduledTimeRange(start: start, end: end))
+    }
+
+    func testScheduledTimeRangeStartOnlyIsInvalid() {
+        let dto = Self.workOrderDTO(start: DomainFixtures.referenceDate, end: nil)
+        XCTAssertNil(dto.toDomain())
+    }
+
+    func testScheduledTimeRangeEndOnlyIsInvalid() {
+        let dto = Self.workOrderDTO(start: nil, end: DomainFixtures.referenceDate.addingTimeInterval(60))
+        XCTAssertNil(dto.toDomain())
+    }
+
+    func testScheduledTimeRangeStartNotBeforeEndIsInvalid() {
+        let start = DomainFixtures.referenceDate
+        XCTAssertNil(Self.workOrderDTO(start: start, end: start).toDomain())
+        XCTAssertNil(Self.workOrderDTO(start: start.addingTimeInterval(60), end: start).toDomain())
+    }
+
+    private static func workOrderDTO(start: Date?, end: Date?) -> FirestoreWorkOrderDTO {
+        let base = FirestoreWorkOrderDTO(domain: DomainFixtures.workOrder(scheduledTimeRange: nil))
+        return FirestoreWorkOrderDTO(
+            id: base.id,
+            workOrderNumber: base.workOrderNumber,
+            createdByUserId: base.createdByUserId,
+            assignedTechnicianId: base.assignedTechnicianId,
+            customerId: base.customerId,
+            workType: base.workType,
+            deviceCategory: base.deviceCategory,
+            deviceBrand: base.deviceBrand,
+            deviceModel: base.deviceModel,
+            serialNumber: base.serialNumber,
+            issueDescription: base.issueDescription,
+            priority: base.priority,
+            scheduledDate: base.scheduledDate,
+            scheduledStart: start,
+            scheduledEnd: end,
+            status: base.status,
+            currentPauseReason: base.currentPauseReason,
+            createdAt: base.createdAt,
+            updatedAt: base.updatedAt,
+            completedAt: base.completedAt
+        )
+    }
 }

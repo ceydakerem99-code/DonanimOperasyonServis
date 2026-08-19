@@ -3,14 +3,10 @@ import FirebaseCore
 
 /// Bootstraps `FirebaseApp` from a bundled `GoogleService-Info.plist`.
 ///
-/// **v4 default:** No real Firebase credentials are checked in yet.
-/// The bootstrapper is deliberately tolerant of a missing plist —
-/// when it can't find one it logs a warning and returns
-/// `.skippedNoConfig`, leaving `FirebaseApp` un-initialised. This
-/// keeps the app launchable in local development and CI while
-/// still leaving the entire Firebase remote data layer wired up
-/// behind interfaces (repositories, data sources) that we exercise
-/// exclusively through fakes in tests.
+/// Missing or invalid configuration is **not** silently ignored by
+/// `DIContainer.live()` — that factory throws `FirebaseError.notConfigured`
+/// (fail-fast). `DIContainer.mock()` and the unit-test harness still
+/// use in-memory fakes and never call this bootstrapper for wiring.
 ///
 /// Real credentials are added in Phase 6 (Authentication) together
 /// with `GoogleService-Info.plist` files for the Dev and Prod

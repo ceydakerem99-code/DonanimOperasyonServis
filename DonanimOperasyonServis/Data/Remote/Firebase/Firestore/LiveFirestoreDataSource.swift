@@ -3,25 +3,30 @@ import FirebaseFirestore
 
 /// `FirestoreDataSource` backed by the real Firebase Firestore SDK.
 ///
-/// Uses `Firestore.Encoder` / `Firestore.Decoder` so DTO `Date`
-/// fields are stored as native Firestore `Timestamp` values (with
-/// nanosecond precision), and enums-as-strings round-trip losslessly.
+/// Uses `Firestore.Encoder` so DTO `Date` fields are stored as native
+/// Firestore `Timestamp` values. The same encoder is used for both
+/// single-document `set` and batch `commit`.
 ///
-/// - Concurrency: The Firestore SDK types (`Firestore`,
-///   `CollectionReference`, `Query`) are documented as thread-safe
-///   but are not marked `Sendable` in Swift 6. We hold a single
-///   `Firestore` reference here and treat it as safe to share across
-///   concurrency domains; hence the `@unchecked Sendable` conformance.
+/// Persistence: disk cache is disabled (`MemoryCacheSettings`).
+/// Reads use `FirestoreSource.server` so an offline device fails
+/// with a network error instead of serving a second local store.
+/// SwiftData remains the only local source of truth.
 ///
-/// - Errors: Every SDK error is funnelled through
-///   `FirebaseError.map(_:)` so upper layers only ever see our
-///   data-layer error taxonomy.
+/// - Concurrency: The Firestore SDK types are documented as
+///   thread-safe but are not marked `Sendable` in Swift 6, hence
+///   `@unchecked Sendable`.
 final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
 
     private let firestore: Firestore
 
-    init(firestore: Firestore = .firestore()) {
-        self.firestore = firestore
+    init(firestore: Firestore? = nil) {
+        if let firestore {
+            self.firestore = firestore
+        } else {
+            let db = Firestore.firestore()
+            db.settings = LiveFirestoreConfiguration.makeSettings()
+            self.firestore = db
+        }
     }
 
     // MARK: Reads
@@ -33,7 +38,7 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
     ) async throws -> T? {
         let ref = firestore.collection(collection.rawValue).document(id)
         do {
-            let snapshot = try await ref.getDocument()
+            let snapshot = try await ref.getDocument(source: LiveFirestoreConfiguration.readSource)
             guard snapshot.exists else { return nil }
             return try snapshot.data(as: T.self)
         } catch {
@@ -55,7 +60,7 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
             query = query.order(by: sort.fieldPath, descending: sort.direction == .descending)
         }
         do {
-            let snapshot = try await query.getDocuments()
+            let snapshot = try await query.getDocuments(source: LiveFirestoreConfiguration.readSource)
             return try snapshot.documents.map { try $0.data(as: T.self) }
         } catch {
             throw FirebaseError.map(error)
@@ -71,7 +76,8 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
     ) async throws {
         let ref = firestore.collection(collection.rawValue).document(id)
         do {
-            try ref.setData(from: value, merge: false)
+            let payload = try LiveFirestoreConfiguration.encode(value)
+            try await ref.setData(payload)
         } catch {
             throw FirebaseError.map(error)
         }
@@ -95,12 +101,9 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
             for write in writes {
                 let ref = firestore.collection(write.collection.rawValue).document(write.id)
                 switch write.kind {
-                case .set(let data):
-                    let payload = try JSONSerialization.jsonObject(with: data)
-                    guard let dictionary = payload as? [String: Any] else {
-                        throw FirebaseError.encodingFailed(reason: "batch payload is not a JSON object")
-                    }
-                    batch.setData(Self.timestamps(in: dictionary), forDocument: ref)
+                case .set(let box):
+                    let payload = try LiveFirestoreConfiguration.encode(box)
+                    batch.setData(payload, forDocument: ref)
                 case .delete:
                     batch.deleteDocument(ref)
                 }
@@ -109,29 +112,6 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
         } catch {
             throw FirebaseError.map(error)
         }
-    }
-
-    /// Recursively replaces millisecond-since-1970 numbers that
-    /// originated from `FirestoreJSON.encoder` with native
-    /// `Timestamp` values. Heuristic: known date field names plus
-    /// any nested dictionary.
-    private static func timestamps(in dictionary: [String: Any]) -> [String: Any] {
-        let dateKeys: Set<String> = [
-            "createdAt", "updatedAt", "completedAt", "capturedAt",
-            "occurredAt", "reviewedAt", "scheduledDate",
-            "scheduledStart", "scheduledEnd"
-        ]
-        var result = dictionary
-        for (key, value) in dictionary {
-            if dateKeys.contains(key), let millis = value as? Double {
-                result[key] = Timestamp(date: Date(timeIntervalSince1970: millis / 1_000))
-            } else if dateKeys.contains(key), let millis = value as? Int64 {
-                result[key] = Timestamp(date: Date(timeIntervalSince1970: Double(millis) / 1_000))
-            } else if let nested = value as? [String: Any] {
-                result[key] = timestamps(in: nested)
-            }
-        }
-        return result
     }
 
     // MARK: - Query translation
@@ -165,10 +145,6 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
 
 private extension FirestoreValue {
 
-    /// Bridges our value envelope to the native Objective-C types the
-    /// Firestore SDK expects for `whereField` etc. `Date` becomes a
-    /// `Timestamp`; nil is `NSNull` so the SDK persists an explicit
-    /// null instead of treating the field as absent.
     var firestoreObject: Any {
         switch self {
         case .string(let s):        return s

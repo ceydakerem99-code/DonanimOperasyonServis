@@ -81,8 +81,8 @@ final class FirebaseErrorMappingTests: XCTestCase {
         XCTAssertEqual(FirebaseError.map(nsError), .networkUnavailable)
     }
 
-    func testMapNotFoundBecomesDomainNotFound() {
-        let mapped = FirebaseRepositoryMapper.mapNotFound(
+    func testMapToDomainNotFound() {
+        let mapped = FirebaseRepositoryMapper.mapToDomain(
             FirebaseError.notFound,
             entity: "User",
             id: "u-1"
@@ -90,12 +90,49 @@ final class FirebaseErrorMappingTests: XCTestCase {
         XCTAssertEqual(mapped as? DomainError, .notFound(entity: "User", id: "u-1"))
     }
 
-    func testMapNotFoundLeavesOtherErrorsUntouched() {
-        let mapped = FirebaseRepositoryMapper.mapNotFound(
-            FirebaseError.networkUnavailable,
+    func testMapToDomainInvalidDocumentBecomesInvalidData() {
+        let mapped = FirebaseRepositoryMapper.mapToDomain(
+            FirebaseError.invalidDocument(reason: "User.decodeFailed"),
             entity: "User",
-            id: "u-1"
+            id: "bad"
         )
-        XCTAssertEqual(mapped as? FirebaseError, .networkUnavailable)
+        XCTAssertEqual(mapped as? DomainError, .invalidData(reason: "User.decodeFailed"))
+    }
+
+    func testMapToDomainInfrastructureCases() {
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.networkUnavailable, entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.networkUnavailable")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.permissionDenied, entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.permissionDenied")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.notConfigured, entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.notConfigured")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.encodingFailed(reason: "x"), entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.encodingFailed: x")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.decodingFailed(reason: "y"), entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.decodingFailed: y")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.storageError(reason: "z"), entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.storageError: z")
+        )
+        XCTAssertEqual(
+            FirebaseRepositoryMapper.mapToDomain(FirebaseError.unknown(reason: "w"), entity: "User") as? DomainError,
+            .infrastructure(underlying: "firebase.unknown: w")
+        )
+    }
+
+    func testMapToDomainPassesDomainErrorThrough() {
+        let original = DomainError.notFound(entity: "User", id: "u-1")
+        let mapped = FirebaseRepositoryMapper.mapToDomain(original, entity: "User", id: "u-1")
+        XCTAssertEqual(mapped as? DomainError, original)
     }
 }

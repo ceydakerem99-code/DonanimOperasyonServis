@@ -2,8 +2,7 @@ import Foundation
 
 /// Firestore-backed implementation of
 /// `WorkOrderStatusHistoryRepository`. History entries are
-/// append-only from the Domain's perspective; Firestore stores
-/// each entry as its own document keyed by `id`.
+/// append-only from the Domain's perspective.
 struct FirebaseWorkOrderStatusHistoryRepository: WorkOrderStatusHistoryRepository {
 
     let dataSource: any FirestoreDataSource
@@ -13,22 +12,26 @@ struct FirebaseWorkOrderStatusHistoryRepository: WorkOrderStatusHistoryRepositor
     }
 
     func list(for workOrderId: WorkOrderID) async throws -> [WorkOrderStatusHistory] {
-        let dtos = try await dataSource.list(
-            FirestoreWorkOrderStatusHistoryDTO.self,
-            collection: .workOrderStatusHistory,
-            predicates: [.equal("workOrderId", .string(workOrderId.rawValue))],
-            orderBy: [.ascending("occurredAt")]
-        )
-        return try dtos.map {
-            try FirebaseRepositoryMapper.requireDomain($0, entity: "WorkOrderStatusHistory") { $0.toDomain() }
+        try await FirebaseRepositoryMapper.run(entity: "WorkOrderStatusHistory", id: workOrderId.rawValue) {
+            let dtos = try await dataSource.list(
+                FirestoreWorkOrderStatusHistoryDTO.self,
+                collection: .workOrderStatusHistory,
+                predicates: [.equal("workOrderId", .string(workOrderId.rawValue))],
+                orderBy: [.ascending("occurredAt")]
+            )
+            return try dtos.map {
+                try FirebaseRepositoryMapper.requireDomain($0, entity: "WorkOrderStatusHistory") { $0.toDomain() }
+            }
         }
     }
 
     func append(_ entry: WorkOrderStatusHistory) async throws {
-        try await dataSource.set(
-            FirestoreWorkOrderStatusHistoryDTO(domain: entry),
-            collection: .workOrderStatusHistory,
-            id: entry.id
-        )
+        try await FirebaseRepositoryMapper.run(entity: "WorkOrderStatusHistory", id: entry.id) {
+            try await dataSource.set(
+                FirestoreWorkOrderStatusHistoryDTO(domain: entry),
+                collection: .workOrderStatusHistory,
+                id: entry.id
+            )
+        }
     }
 }

@@ -55,11 +55,12 @@ protocol FirestoreDataSource: Sendable {
 }
 
 /// A single document mutation inside a `commit` batch. The payload
-/// is pre-encoded so the data source stays generic over DTO types
-/// without needing an existential `Encodable`.
+/// is the original `Encodable` DTO (type-erased) so each data source
+/// can apply its own encoder: live Firestore uses `Firestore.Encoder`
+/// (native `Timestamp`); the in-memory fake uses `FirestoreJSON`.
 struct FirestoreWrite: Sendable {
     enum Kind: Sendable {
-        case set(Data)
+        case set(FirestoreEncodableBox)
         case delete
     }
 
@@ -67,22 +68,32 @@ struct FirestoreWrite: Sendable {
     let id: String
     let kind: Kind
 
-    static func set<T: Encodable>(
+    static func set<T: Encodable & Sendable>(
         _ value: T,
         collection: FirestoreCollection,
-        id: String,
-        encoder: JSONEncoder = FirestoreJSON.encoder
-    ) throws -> FirestoreWrite {
-        do {
-            let data = try encoder.encode(value)
-            return FirestoreWrite(collection: collection, id: id, kind: .set(data))
-        } catch {
-            throw FirebaseError.encodingFailed(reason: String(describing: error))
-        }
+        id: String
+    ) -> FirestoreWrite {
+        FirestoreWrite(collection: collection, id: id, kind: .set(FirestoreEncodableBox(value)))
     }
 
     static func delete(collection: FirestoreCollection, id: String) -> FirestoreWrite {
         FirestoreWrite(collection: collection, id: id, kind: .delete)
+    }
+}
+
+/// Type-erased `Encodable` box so a batch can carry heterogeneous
+/// DTOs. `@unchecked Sendable` because `Encoder` itself is not
+/// Sendable; the box is created with a Sendable value and only
+/// encoded on the data-source executor.
+struct FirestoreEncodableBox: Encodable, @unchecked Sendable {
+    private let encodeTo: (Encoder) throws -> Void
+
+    init<T: Encodable & Sendable>(_ value: T) {
+        encodeTo = { encoder in try value.encode(to: encoder) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try encodeTo(encoder)
     }
 }
 

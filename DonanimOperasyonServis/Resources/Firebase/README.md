@@ -2,9 +2,10 @@
 
 Bu klasör Firebase Console'dan indirilen `GoogleService-Info.plist`
 dosyalarını barındırır. Gerçek credential dosyaları **asla commit
-edilmez** (`.gitignore`). Faz 4'te uygulama, plist yoksa Firebase'i
-yapılandırmadan ayağa kalkar ve remote katmanı in-memory fake'lere
-düşer.
+edilmez** (`.gitignore`). `DIContainer.live()` Firebase config yoksa
+veya geçersizse **fail-fast** (`FirebaseError.notConfigured`) — Fake
+Firestore/Storage production/live path'te kullanılmaz. Preview ve
+unit testler `DIContainer.mock()` / `Fake*DataSource` kullanır.
 
 ## Dosyalar
 
@@ -24,9 +25,9 @@ düşer.
 - **Bulunursa** `FirebaseApp.configure(options:)` çağrılır ve
   `DIContainer.live()` gerçek `LiveFirestoreDataSource` /
   `LiveFirebaseStorageDataSource` bağlar.
-- **Bulunmazsa** (mevcut varsayılan) bootstrap
-  `.skippedNoConfig` döner; DI in-memory fake data source kullanır.
-  Uygulama yine de açılır. Unit testler her zaman fake kullanır.
+- **Bulunmazsa veya parse edilemezse** `DIContainer.live()` throw
+  eder (`FirebaseError.notConfigured`). Fake data source **yalnızca**
+  `DIContainer.mock()` ve unit-test harness'te kullanılır.
 
 Gerçek Auth, session ve role fetch **Faz 6**'dadır. Bu fazda
 Firebase Authentication, FCM veya Offline Sync yoktur.
