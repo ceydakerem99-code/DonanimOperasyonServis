@@ -2,7 +2,9 @@ import SwiftUI
 
 struct OperatorAppShellView: View {
     let user: User
+    let dependencies: OperatorDependencies
     let onLogout: () -> Void
+
     @State private var router = OperatorAppRouter(selectedTab: .dashboard)
 
     var body: some View {
@@ -21,11 +23,7 @@ struct OperatorAppShellView: View {
                 operatorRoot(for: tab)
             },
             destination: { destination in
-                NavigationPlaceholderView(
-                    title: destination.title,
-                    subtitle: OperatorNavigationConfiguration.destinationSubtitle(for: destination),
-                    detail: "Gerçek ekran Faz 9'da."
-                )
+                destinationView(for: destination)
             }
         )
         .onChange(of: router.selectedTab) { _, _ in
@@ -37,74 +35,84 @@ struct OperatorAppShellView: View {
     private func operatorRoot(for tab: OperatorTab) -> some View {
         switch tab {
         case .dashboard:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: false)
+            OperatorDashboardView(
+                viewModel: OperatorDashboardViewModel(actor: user, dependencies: dependencies),
+                onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
+                onShowAllUrgent: { router.selectedTab = .workOrders }
+            )
+
         case .workOrders:
-            tabRoot(tab: tab, sampleDestination: .workOrderDetail, showsLogout: false)
+            OperatorWorkOrderListView(
+                viewModel: OperatorWorkOrderListViewModel(actor: user, dependencies: dependencies),
+                onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
+                onShowEditRequests: { router.push(.editRequests) }
+            )
+
         case .notifications:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: false)
+            OperatorNotificationListView(
+                viewModel: OperatorNotificationListViewModel(actor: user, dependencies: dependencies)
+            )
+
         case .profile:
-            tabRoot(tab: tab, sampleDestination: nil, showsLogout: true)
+            OperatorProfileView(user: user, onLogout: onLogout)
         }
     }
 
     @ViewBuilder
-    private func tabRoot(
-        tab: OperatorTab,
-        sampleDestination: OperatorDestination?,
-        showsLogout: Bool
-    ) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                NavigationPlaceholderView(
-                    title: tab.title,
-                    subtitle: OperatorNavigationConfiguration.rootSubtitle(for: tab)
+    private func destinationView(for destination: OperatorDestination) -> some View {
+        switch destination {
+        case .workOrderDetail(let id):
+            OperatorWorkOrderDetailView(
+                viewModel: OperatorWorkOrderDetailViewModel(
+                    workOrderId: id,
+                    actor: user,
+                    dependencies: dependencies
+                ),
+                onShowReport: { router.push(.report($0)) },
+                onShowEditRequests: { router.push(.editRequests) }
+            )
+
+        case .newWorkOrderWizard:
+            NewWorkOrderWizardView(
+                viewModel: NewWorkOrderWizardViewModel(actor: user, dependencies: dependencies),
+                onFinished: { id in
+                    router.popToRoot()
+                    router.selectedTab = .workOrders
+                    router.push(.workOrderDetail(id))
+                },
+                onCancel: { router.popToRoot() }
+            )
+
+        case .editRequests:
+            OperatorEditRequestListView(
+                viewModel: OperatorEditRequestListViewModel(actor: user, dependencies: dependencies),
+                onSelect: { router.push(.editRequestDetail($0)) }
+            )
+
+        case .editRequestDetail(let id):
+            OperatorEditRequestDetailView(
+                viewModel: OperatorEditRequestDetailViewModel(
+                    requestId: id,
+                    actor: user,
+                    dependencies: dependencies
                 )
+            )
 
-                if tab == .workOrders {
-                    SecondaryButton(
-                        title: "Düzenleme Talepleri",
-                        systemImage: "doc.text.magnifyingglass"
-                    ) {
-                        router.push(.editRequests)
-                    }
-                }
-
-                if let sampleDestination {
-                    SecondaryButton(
-                        title: "Örnek Detay",
-                        systemImage: "chevron.right"
-                    ) {
-                        router.push(sampleDestination)
-                    }
-                }
-
-                if showsLogout {
-                    SecondaryButton(
-                        title: "Çıkış Yap",
-                        systemImage: "rectangle.portrait.and.arrow.right",
-                        action: onLogout
-                    )
-                }
-            }
-            .padding(.horizontal, AppSpacing.l)
+        case .report(let id):
+            OperatorWorkOrderReportView(
+                workOrderId: id,
+                dependencies: dependencies,
+                actor: user
+            )
         }
-        .navigationTitle(tab.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .accessibilityHint(Text(tab.accessibilityHint))
     }
 }
 
 #if DEBUG
 #Preview("Operator AppShell") {
     OperatorAppShellView(
-        user: User(
-            id: UserID("operator-preview"),
-            email: "operator@example.com",
-            fullName: "Operasyon Önizleme",
-            role: .operator,
-            createdAt: Date(),
-            updatedAt: Date()
-        ),
+        user: OperatorPreviewData.operatorUser,
+        dependencies: DIContainer.mock().makeOperatorDependencies(),
         onLogout: {}
     )
 }

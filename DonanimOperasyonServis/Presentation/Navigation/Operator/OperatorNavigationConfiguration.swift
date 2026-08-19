@@ -37,12 +37,12 @@ extension OperatorTab {
     }
 }
 
-enum OperatorDestination: String, Hashable, Sendable, CaseIterable {
-    case workOrderDetail
+enum OperatorDestination: Hashable, Sendable {
+    case workOrderDetail(WorkOrderID)
     case newWorkOrderWizard
     case editRequests
-    case editRequestDetail
-    case report
+    case editRequestDetail(EditRequestID)
+    case report(WorkOrderID)
 }
 
 extension OperatorDestination {
@@ -73,12 +73,59 @@ enum OperatorNavigationConfiguration {
             action: {}
         )
     }
+}
 
-    static func rootSubtitle(for tab: OperatorTab) -> String {
-        "Operasyon Yetkilisi — \(tab.title) navigation skeleton (Faz 7)."
+/// List filter chips from the Operator prototype.
+enum OperatorWorkOrderListFilter: String, CaseIterable, Hashable, Sendable {
+    case all
+    case assigned
+    case inProgress
+    case paused
+    case completed
+
+    var title: String {
+        switch self {
+        case .all: return "Tümü"
+        case .assigned: return "Atandı"
+        case .inProgress: return "Devam Eden"
+        case .paused: return "Beklemede"
+        case .completed: return "Tamamlandı"
+        }
     }
 
-    static func destinationSubtitle(for destination: OperatorDestination) -> String {
-        "Operasyon Yetkilisi — \(destination.title) placeholder."
+    var status: WorkOrderStatus? {
+        switch self {
+        case .all: return nil
+        case .assigned: return .assigned
+        case .inProgress: return .inProgress
+        case .paused: return .paused
+        case .completed: return .completed
+        }
+    }
+}
+
+/// Edit-request inbox filters from the prototype.
+enum OperatorEditRequestFilter: String, CaseIterable, Hashable, Sendable {
+    case pending
+    case approved
+    case rejected
+    case all
+
+    var title: String {
+        switch self {
+        case .pending: return "Bekliyor"
+        case .approved: return "Onaylandı"
+        case .rejected: return "Reddedildi"
+        case .all: return "Tümü"
+        }
+    }
+
+    var status: EditRequestStatus? {
+        switch self {
+        case .pending: return .pending
+        case .approved: return .approved
+        case .rejected: return .rejected
+        case .all: return nil
+        }
     }
 }

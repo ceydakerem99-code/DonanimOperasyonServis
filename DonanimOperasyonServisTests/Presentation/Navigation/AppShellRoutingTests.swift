@@ -52,6 +52,13 @@ final class AppShellRoutingTests: XCTestCase {
         XCTAssertEqual(router.path, [.newWorkOrderWizard])
     }
 
+    func testOperatorRouterWorkOrderDetailDestination() {
+        let router = OperatorAppRouter(selectedTab: .workOrders)
+        let id = WorkOrderID("wo-test-1")
+        router.push(.workOrderDetail(id))
+        XCTAssertEqual(router.path, [.workOrderDetail(id)])
+    }
+
     func testTechnicianRouterWorkOrderDetailDestination() {
         let router = TechnicianAppRouter(selectedTab: .home)
         router.push(.workOrderDetail)

@@ -5,13 +5,18 @@ import SwiftUI
 struct RoleAppShellView: View {
     let user: User
     let onLogout: () -> Void
+    @Environment(\.diContainer) private var container
 
     var body: some View {
         switch user.role {
         case .admin:
             AdminAppShellView(user: user, onLogout: onLogout)
         case .operator:
-            OperatorAppShellView(user: user, onLogout: onLogout)
+            OperatorAppShellView(
+                user: user,
+                dependencies: container.makeOperatorDependencies(),
+                onLogout: onLogout
+            )
         case .technician:
             TechnicianAppShellView(user: user, onLogout: onLogout)
         }
@@ -60,5 +65,6 @@ struct RoleAppShellView: View {
         )
         .tabItem { Text("Teknisyen") }
     }
+    .environment(\.diContainer, DIContainer.mock())
 }
 #endif
