@@ -4,20 +4,23 @@ struct RootView: View {
     @Environment(\.diContainer) private var container
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: AppSpacing.l) {
             Image(systemName: "wrench.and.screwdriver.fill")
                 .font(.system(size: 48, weight: .semibold))
-                .foregroundStyle(.tint)
+                .foregroundStyle(AppColor.brandPrimary)
 
             Text("Donanım Operasyon ve Servis")
-                .font(.title2.weight(.semibold))
+                .font(AppFont.title)
+                .foregroundStyle(AppColor.primaryText)
                 .multilineTextAlignment(.center)
 
-            Text("Faz 0 — proje iskeleti hazır.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text("Faz 1 — Design System hazır.")
+                .font(AppFont.caption)
+                .foregroundStyle(AppColor.secondaryText)
         }
-        .padding()
+        .padding(AppSpacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppColor.neutralBackground)
         .task {
             AppLogger.app.info("RootView appeared; DI container ready.")
             _ = container
