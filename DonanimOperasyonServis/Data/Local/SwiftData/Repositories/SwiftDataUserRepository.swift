@@ -33,6 +33,10 @@ struct SwiftDataUserRepository: UserRepository {
         try await store.upsertUser(user)
     }
 
+    func updateSelfServiceProfile(_ user: User) async throws {
+        try await store.upsertUser(user)
+    }
+
     func delete(id: UserID) async throws {
         try await store.deleteUser(id: id.rawValue)
     }

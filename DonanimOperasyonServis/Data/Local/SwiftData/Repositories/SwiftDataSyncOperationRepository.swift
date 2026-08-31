@@ -38,6 +38,10 @@ struct SwiftDataSyncOperationRepository: SyncOperationRepository {
         try await store.fetchSyncOperations(status: .conflict)
     }
 
+    func fetch(status: SyncStatus) async throws -> [SyncOperation] {
+        try await store.fetchSyncOperations(status: status)
+    }
+
     func update(_ operation: SyncOperation) async throws {
         try await store.updateSyncOperation(operation)
     }
@@ -48,6 +52,10 @@ struct SwiftDataSyncOperationRepository: SyncOperationRepository {
 
     func deleteCompleted() async throws {
         try await store.deleteCompletedSyncOperations()
+    }
+
+    func deleteFailed(ids: [SyncOperationID]) async throws {
+        try await store.deleteFailedSyncOperations(ids: ids.map(\.rawValue))
     }
 
     func countPending(now: Date) async throws -> Int {

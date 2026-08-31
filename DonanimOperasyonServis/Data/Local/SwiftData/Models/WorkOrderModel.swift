@@ -63,6 +63,9 @@ final class WorkOrderModel {
     @Relationship(deleteRule: .cascade, inverse: \EditRequestModel.workOrder)
     var editRequests: [EditRequestModel] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \CustomerSatisfactionModel.workOrder)
+    var customerSatisfactions: [CustomerSatisfactionModel] = []
+
     init(
         id: String,
         workOrderNumber: String,

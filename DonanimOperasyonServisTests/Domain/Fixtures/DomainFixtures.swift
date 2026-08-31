@@ -63,6 +63,22 @@ enum DomainFixtures {
         )
     }
 
+    /// Production Mehmet technician (`donanimoperasyonservis` Firebase project).
+    static let mehmetTechnicianUID = UserID("v1OBBg4YMWPoo1prrf7kp9wmQAa2")
+
+    static func mehmetTechnician(isActive: Bool = true) -> User {
+        User(
+            id: mehmetTechnicianUID,
+            email: "mehmetkerem@dops.com",
+            fullName: "Mehmet Kerem",
+            role: .technician,
+            phoneNumber: nil,
+            isActive: isActive,
+            createdAt: referenceDate,
+            updatedAt: referenceDate
+        )
+    }
+
     // MARK: - WorkOrder
 
     static func workOrder(
@@ -256,6 +272,30 @@ enum DomainFixtures {
         )
     }
 
+    // MARK: - CustomerSatisfaction
+
+    static func customerSatisfaction(
+        id: CustomerSatisfactionID = CustomerSatisfactionID("cs-1"),
+        workOrderId: WorkOrderID = WorkOrderID("wo-1"),
+        customerId: CustomerID = CustomerID("cust-1"),
+        status: CustomerSatisfactionStatus = .pending,
+        rating: CustomerSatisfactionRating? = nil,
+        comment: String? = nil,
+        submittedAt: Date? = nil
+    ) -> CustomerSatisfaction {
+        CustomerSatisfaction(
+            id: id,
+            workOrderId: workOrderId,
+            customerId: customerId,
+            status: status,
+            rating: rating,
+            comment: comment,
+            createdAt: referenceDate,
+            updatedAt: referenceDate,
+            submittedAt: submittedAt
+        )
+    }
+
     // MARK: - Customer / Notification / History
 
     static func customer(
@@ -276,7 +316,10 @@ enum DomainFixtures {
     static func notification(
         id: NotificationID = NotificationID("notif-1"),
         recipientUserId: UserID = UserID("user-technician-1"),
-        type: NotificationType = .workOrderAssigned
+        type: NotificationType = .workOrderAssigned,
+        relatedWorkOrderId: WorkOrderID? = nil,
+        relatedEditRequestId: EditRequestID? = nil,
+        isRead: Bool = false
     ) -> AppNotification {
         AppNotification(
             id: id,
@@ -284,6 +327,9 @@ enum DomainFixtures {
             type: type,
             title: "İş emri atandı",
             body: "Yeni bir iş emri atandı.",
+            relatedWorkOrderId: relatedWorkOrderId,
+            relatedEditRequestId: relatedEditRequestId,
+            isRead: isRead,
             createdAt: referenceDate
         )
     }

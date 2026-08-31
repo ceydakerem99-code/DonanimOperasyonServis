@@ -6,6 +6,7 @@ struct CustomTabBarItem<Tab: Hashable>: Identifiable {
     let tab: Tab
     let title: String
     let systemImage: String
+    var showsUnreadIndicator: Bool = false
 
     var id: Tab { tab }
 }
@@ -33,16 +34,31 @@ struct CustomTabBar<Tab: Hashable>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            let split = splitPoint
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                tabButton(for: item)
-                if let split, index == split - 1 {
-                    centerButton
+            if centerAction != nil, items.count >= 2 {
+                let leftCount = (items.count + 1) / 2
+                HStack(spacing: 0) {
+                    ForEach(Array(items.prefix(leftCount)), id: \.tab) { item in
+                        tabButton(for: item)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                centerButton
+
+                HStack(spacing: 0) {
+                    ForEach(Array(items.suffix(items.count - leftCount)), id: \.tab) { item in
+                        tabButton(for: item)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                ForEach(items) { item in
+                    tabButton(for: item)
                 }
             }
         }
+        .padding(.top, centerAction != nil ? CustomTabBarLayout.centerFABProtrusion : AppSpacing.s)
         .padding(.horizontal, AppSpacing.m)
-        .padding(.top, AppSpacing.s)
         .padding(.bottom, AppSpacing.m)
         .background(
             AppColor.elevatedSurface
@@ -51,13 +67,15 @@ struct CustomTabBar<Tab: Hashable>: View {
                         .fill(AppColor.divider)
                         .frame(height: 0.5)
                 }
-                .ignoresSafeArea(edges: .bottom)
         )
-    }
-
-    private var splitPoint: Int? {
-        guard centerAction != nil, items.count >= 2 else { return nil }
-        return items.count / 2
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TabBarHeightPreferenceKey.self,
+                    value: proxy.size.height
+                )
+            }
+        }
     }
 
     @ViewBuilder private var centerButton: some View {
@@ -86,11 +104,24 @@ struct CustomTabBar<Tab: Hashable>: View {
     private func tabButton(for item: CustomTabBarItem<Tab>) -> some View {
         let isSelected = item.tab == selection
         return Button {
+            #if DEBUG
+            AppLogger.navigation.info(
+                "NAV tabTap tab=\(String(describing: item.tab), privacy: .public) wasSelected=\(isSelected, privacy: .public)"
+            )
+            #endif
             selection = item.tab
         } label: {
             VStack(spacing: AppSpacing.xs) {
-                Image(systemName: item.systemImage)
-                    .font(.system(size: 20, weight: .regular))
+                ZStack(alignment: .top) {
+                    Image(systemName: item.systemImage)
+                        .font(.system(size: 20, weight: .regular))
+                    if item.showsUnreadIndicator {
+                        Circle()
+                            .fill(AppColor.brandPrimary)
+                            .frame(width: 8, height: 8)
+                            .offset(x:11, y: -5)
+                    }
+                }
                 Text(item.title)
                     .font(AppFont.label)
             }
@@ -101,6 +132,9 @@ struct CustomTabBar<Tab: Hashable>: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(item.title))
+        .accessibilityValue(
+            Text(item.showsUnreadIndicator ? "Okunmamış bildirim var" : "")
+        )
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
@@ -120,7 +154,7 @@ private struct CustomTabBarPreview: View {
                     items: [
                         .init(tab: "dashboard", title: "Dashboard", systemImage: "square.grid.2x2"),
                         .init(tab: "orders", title: "İş Emirleri", systemImage: "list.bullet.rectangle"),
-                        .init(tab: "notifications", title: "Bildirimler", systemImage: "bell"),
+                        .init(tab: "notifications", title: "Bildirimler", systemImage: "bell", showsUnreadIndicator: true),
                         .init(tab: "profile", title: "Profil", systemImage: "person.crop.circle")
                     ],
                     selection: $operatorTab,

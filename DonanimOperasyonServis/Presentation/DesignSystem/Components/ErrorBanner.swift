@@ -15,7 +15,7 @@ struct ErrorBanner: View {
         HStack(alignment: .top, spacing: AppSpacing.m) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(AppFont.subtitle)
-                .foregroundStyle(AppColor.danger)
+                .foregroundStyle(AppColor.statusError)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -35,7 +35,7 @@ struct ErrorBanner: View {
                 Button(action: onRetry) {
                     Text(retryTitle)
                         .font(AppFont.label)
-                        .foregroundStyle(AppColor.danger)
+                        .foregroundStyle(AppColor.statusError)
                         .padding(.horizontal, AppSpacing.s)
                         .frame(minHeight: AppSpacing.minimumTouchTarget)
                 }
@@ -46,11 +46,11 @@ struct ErrorBanner: View {
         .padding(AppSpacing.m)
         .background(
             RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
-                .fill(AppColor.danger.opacity(0.08))
+                .fill(AppColor.semanticErrorSurface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
-                .strokeBorder(AppColor.danger.opacity(0.25), lineWidth: 1)
+                .strokeBorder(AppColor.statusError.opacity(0.25), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
     }

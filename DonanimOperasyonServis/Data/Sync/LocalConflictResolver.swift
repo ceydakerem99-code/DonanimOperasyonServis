@@ -95,6 +95,7 @@ actor LocalConflictResolver: ConflictResolving {
                 conflict: conflict,
                 linked: linked,
                 localRecord: localRecord,
+                actorUserId: actor.id.rawValue,
                 now: now
             )
         case .useRemote:
@@ -149,6 +150,7 @@ actor LocalConflictResolver: ConflictResolving {
         conflict: SyncConflict,
         linked: SyncOperation?,
         localRecord: ReconciledRecord?,
+        actorUserId: String,
         now: Date
     ) async throws -> SyncEnqueueOutcome? {
         guard localRecord != nil else { return nil }
@@ -184,7 +186,8 @@ actor LocalConflictResolver: ConflictResolving {
                 createdAt: now,
                 localVersion: version,
                 remoteVersion: conflict.remoteVersion,
-                workOrderStatus: workOrderStatus
+                workOrderStatus: workOrderStatus,
+                actorUserId: actorUserId
             )
             let outcome = try await queue.enqueue(candidate)
             switch outcome {

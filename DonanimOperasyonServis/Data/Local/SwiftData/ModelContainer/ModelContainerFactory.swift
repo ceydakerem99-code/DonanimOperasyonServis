@@ -23,6 +23,7 @@ enum ModelContainerFactory {
     static let modelTypes: [any PersistentModel.Type] = [
         UserModel.self,
         CustomerModel.self,
+        WorkOrderTemplateModel.self,
         WorkOrderModel.self,
         WorkOrderNoteModel.self,
         WorkOrderStatusHistoryModel.self,
@@ -30,6 +31,7 @@ enum ModelContainerFactory {
         WorkOrderLocationModel.self,
         SignatureModel.self,
         EditRequestModel.self,
+        CustomerSatisfactionModel.self,
         NotificationModel.self,
         LocalSessionModel.self,
         SyncOperationModel.self,

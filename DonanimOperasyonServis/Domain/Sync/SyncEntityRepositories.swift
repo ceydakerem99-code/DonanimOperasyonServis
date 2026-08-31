@@ -1,6 +1,6 @@
 import Foundation
 
-/// The ten syncable entity repositories, bundled so `SyncManager`
+/// The syncable entity repositories, bundled so `SyncManager`
 /// can be constructed without a 20-parameter initializer. Local and
 /// remote sides use the same Domain protocols; the local side is
 /// SwiftData, the remote side is Firebase.
@@ -14,5 +14,6 @@ struct SyncEntityRepositories: Sendable {
     var statusHistory: any WorkOrderStatusHistoryRepository
     var signatures: any SignatureRepository
     var editRequests: any EditRequestRepository
+    var customerSatisfactions: any CustomerSatisfactionRepository
     var notifications: any NotificationRepository
 }

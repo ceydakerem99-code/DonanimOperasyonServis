@@ -19,6 +19,11 @@ extension AppRouting {
     func popToRoot() {
         path.removeAll()
     }
+
+    func pop() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
 }
 
 /// Base router shared by all role shells.

@@ -10,6 +10,7 @@ struct WorkOrderMapSection: View {
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var resolvedCoordinate: CLLocationCoordinate2D?
+    @Environment(\.workOrderMapHeight) private var mapHeight
 
     private var query: String {
         [address, city].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
@@ -38,7 +39,7 @@ struct WorkOrderMapSection: View {
                     )
                 }
             }
-            .frame(height: 180)
+            .frame(height: mapHeight)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
@@ -58,18 +59,33 @@ struct WorkOrderMapSection: View {
                         .frame(minHeight: AppSpacing.minimumTouchTarget)
                 }
             }
+
+            if let latest = latestCapturedLocation,
+               let encoded = latest.event.displayName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+               let url = URL(string: "http://maps.apple.com/?ll=\(latest.coordinate.latitude),\(latest.coordinate.longitude)&q=\(encoded)") {
+                Link(destination: url) {
+                    Label("Son GPS Kaydını Aç", systemImage: "map")
+                        .font(AppFont.label)
+                        .foregroundStyle(AppColor.brandPrimary)
+                        .frame(minHeight: AppSpacing.minimumTouchTarget)
+                }
+            }
         }
         .task(id: query) {
             await resolveAddress()
         }
     }
 
+    private var latestCapturedLocation: WorkOrderLocation? {
+        capturedLocations.max(by: { $0.capturedAt < $1.capturedAt })
+    }
+
     @MainActor
     private func resolveAddress() async {
-        if let last = capturedLocations.last {
+        if let latest = latestCapturedLocation {
             let coordinate = CLLocationCoordinate2D(
-                latitude: last.coordinate.latitude,
-                longitude: last.coordinate.longitude
+                latitude: latest.coordinate.latitude,
+                longitude: latest.coordinate.longitude
             )
             resolvedCoordinate = coordinate
             cameraPosition = .region(
@@ -92,5 +108,16 @@ struct WorkOrderMapSection: View {
         } catch {
             // Keep map empty; address text still shown.
         }
+    }
+}
+
+enum WorkOrderMapHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 180
+}
+
+extension EnvironmentValues {
+    var workOrderMapHeight: CGFloat {
+        get { self[WorkOrderMapHeightKey.self] }
+        set { self[WorkOrderMapHeightKey.self] = newValue }
     }
 }

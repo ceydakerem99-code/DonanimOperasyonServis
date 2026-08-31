@@ -18,6 +18,14 @@ enum DomainError: Error, Hashable, Sendable {
     /// decided).
     case invalidEditRequestTransition(from: EditRequestStatus, to: EditRequestStatus)
 
+    /// A `CustomerSatisfaction` state machine transition from `from`
+    /// to `to` is not allowed (typically because the survey has
+    /// already been submitted or expired).
+    case invalidCustomerSatisfactionTransition(
+        from: CustomerSatisfactionStatus,
+        to: CustomerSatisfactionStatus
+    )
+
     /// The acting user does not have the role, or does not own the
     /// resource, required for this action. Carries the offending
     /// action for logging / analytics.
@@ -35,6 +43,10 @@ enum DomainError: Error, Hashable, Sendable {
     /// The edit request payload is malformed (e.g. `currentValue`
     /// equals `requestedValue`, or the field is not editable).
     case invalidEditRequest(reason: InvalidEditRequestReason)
+
+    /// The customer satisfaction payload or lifecycle precondition
+    /// is invalid (e.g. work order not completed, survey not pending).
+    case invalidCustomerSatisfaction(reason: InvalidCustomerSatisfactionReason)
 
     /// A referenced entity could not be found.
     case notFound(entity: String, id: String)
@@ -66,6 +78,14 @@ extension DomainError {
         case tooManyRequests
         case unauthorized
         case userDocumentMissing
+        /// Firebase Auth could not read/write the Keychain (often
+        /// unsigned simulator builds / missing code signing).
+        case keychainUnavailable
+        case weakPassword
+        case passwordsDoNotMatch
+        case sameAsCurrentPassword
+        case sessionInvalid
+        case requiresRecentLogin
         case unknown
     }
 
@@ -80,5 +100,16 @@ extension DomainError {
         case selfReview
         /// The target work order is not in `.completed` state.
         case workOrderNotCompleted
+    }
+
+    /// Subcases explaining why a `CustomerSatisfaction` mutation was
+    /// rejected.
+    enum InvalidCustomerSatisfactionReason: String, Hashable, Sendable {
+        /// The target work order is not in `.completed` state.
+        case workOrderNotCompleted
+        /// A `.pending` survey already exists for this work order.
+        case pendingAlreadyExists
+        /// The survey is not in `.pending` state.
+        case notPending
     }
 }

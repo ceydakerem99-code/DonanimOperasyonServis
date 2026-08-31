@@ -3,10 +3,11 @@ import SwiftUI
 struct AdminUserListView: View {
     @Bindable var viewModel: AdminUserListViewModel
     var onSelectUser: (UserID) -> Void
+    var onCreateUser: (() -> Void)?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.m) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.m) {
                 searchField
                 filterChips
                 if let role = viewModel.roleFilter {
@@ -23,34 +24,46 @@ struct AdminUserListView: View {
                     }
                 }
 
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Kullanıcılar yükleniyor...")
-                        .frame(minHeight: 240)
-
-                case .error(let message):
-                    ErrorBanner(title: "Liste yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "Kullanıcılar yükleniyor...",
+                    errorTitle: "Liste yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        ForEach(viewModel.rows) { row in
+                            userRow(row)
+                        }
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "person.2",
+                            title: "Kullanıcı bulunamadı",
+                            message: "Arama veya filtre kriterlerini değiştirin."
+                        )
                     }
-
-                case .empty:
-                    EmptyState(
-                        systemImage: "person.2",
-                        title: "Kullanıcı bulunamadı",
-                        message: "Arama veya filtre kriterlerini değiştirin."
-                    )
-
-                case .loaded:
-                    ForEach(viewModel.rows) { row in
-                        userRow(row)
-                    }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
         }
         .navigationTitle("Kullanıcılar")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if onCreateUser != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        onCreateUser?()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Yeni kullanıcı")
+                }
+            }
+        }
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
         .onChange(of: viewModel.searchText) { _, _ in
@@ -153,7 +166,11 @@ struct AdminUserListView: View {
 #if DEBUG
 #Preview("Users — loaded") {
     NavigationStack {
-        AdminUserListView(viewModel: .previewLoaded(), onSelectUser: { _ in })
+        AdminUserListView(
+            viewModel: .previewLoaded(),
+            onSelectUser: { _ in },
+            onCreateUser: {}
+        )
     }
 }
 

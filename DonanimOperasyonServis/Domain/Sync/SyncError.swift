@@ -26,6 +26,9 @@ enum SyncError: Error, Hashable, Sendable {
     /// Catch-all. Carries a diagnostic string for logs.
     case unknown(reason: String)
 
+    /// A required upstream queue row failed permanently (e.g. GPS create).
+    case dependencyBlocked(blockingOperationId: String, underlying: String)
+
     /// Stable, code-first string stored on `SyncOperation.errorMessage`.
     var diagnosticMessage: String {
         switch self {
@@ -36,6 +39,8 @@ enum SyncError: Error, Hashable, Sendable {
         case .conflict:           return "conflict"
         case .serverError:        return "serverError"
         case .unknown(let reason): return "unknown:\(reason)"
+        case .dependencyBlocked(let blockingOperationId, let underlying):
+            return "dependencyBlocked:\(blockingOperationId):\(underlying)"
         }
     }
 }

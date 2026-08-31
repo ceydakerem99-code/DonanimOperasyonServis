@@ -30,6 +30,10 @@ final class SyncOperationModel {
 
     var localVersion: Int
     var remoteVersion: Int
+    /// Optional queue dependency (raw SyncOperationID). Nil for legacy rows.
+    var dependsOnOperationId: String?
+    /// Firebase Auth UID of the user who enqueued this row.
+    var actorUserId: String?
 
     init(
         id: String,
@@ -46,7 +50,9 @@ final class SyncOperationModel {
         errorMessage: String?,
         localVersion: Int,
         remoteVersion: Int,
-        idempotencyKey: String
+        idempotencyKey: String,
+        dependsOnOperationId: String? = nil,
+        actorUserId: String? = nil
     ) {
         self.id = id
         self.entityTypeRaw = entityTypeRaw
@@ -63,6 +69,8 @@ final class SyncOperationModel {
         self.localVersion = localVersion
         self.remoteVersion = remoteVersion
         self.idempotencyKey = idempotencyKey
+        self.dependsOnOperationId = dependsOnOperationId
+        self.actorUserId = actorUserId
     }
 }
 
@@ -86,7 +94,9 @@ extension SyncOperationModel {
             errorMessage: domain.errorMessage,
             localVersion: domain.localVersion,
             remoteVersion: domain.remoteVersion,
-            idempotencyKey: domain.idempotencyKey.rawValue
+            idempotencyKey: domain.idempotencyKey.rawValue,
+            dependsOnOperationId: domain.dependsOnOperationId?.rawValue,
+            actorUserId: domain.actorUserId
         )
     }
 
@@ -105,6 +115,8 @@ extension SyncOperationModel {
         self.localVersion = domain.localVersion
         self.remoteVersion = domain.remoteVersion
         self.idempotencyKey = domain.idempotencyKey.rawValue
+        self.dependsOnOperationId = domain.dependsOnOperationId?.rawValue
+        self.actorUserId = domain.actorUserId
     }
 
     /// Reconstructs the Domain value. Returns `nil` when any persisted
@@ -132,7 +144,9 @@ extension SyncOperationModel {
             errorMessage: errorMessage,
             localVersion: localVersion,
             remoteVersion: remoteVersion,
-            idempotencyKey: SyncIdempotencyKey(idempotencyKey)
+            idempotencyKey: SyncIdempotencyKey(idempotencyKey),
+            dependsOnOperationId: dependsOnOperationId.map(SyncOperationID.init),
+            actorUserId: actorUserId
         )
     }
 }

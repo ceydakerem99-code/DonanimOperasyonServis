@@ -21,7 +21,20 @@ final class AppColorConcurrencyTests: XCTestCase {
                         UIColor(AppColor.secondaryText),
                         UIColor(AppColor.divider),
                         UIColor(AppColor.statusInProgress),
-                        UIColor(AppColor.priorityUrgent)
+                        UIColor(AppColor.priorityUrgent),
+                        UIColor(AppColor.statusUrgent),
+                        UIColor(AppColor.statusOverdue),
+                        UIColor(AppColor.statusPaused),
+                        UIColor(AppColor.statusAvailable),
+                        UIColor(AppColor.statusBusy),
+                        UIColor(AppColor.priorityNormalAccent),
+                        UIColor(AppColor.priorityHighAccent),
+                        UIColor(AppColor.timeToday),
+                        UIColor(AppColor.timeApproaching),
+                        UIColor(AppColor.timeDelayed),
+                        UIColor(AppColor.timeWindowPassed),
+                        UIColor(AppColor.timeScheduled),
+                        UIColor(AppColor.semanticPrimarySurface)
                     ]
                     for color in colors {
                         let resolved = color.resolvedColor(with: traits)

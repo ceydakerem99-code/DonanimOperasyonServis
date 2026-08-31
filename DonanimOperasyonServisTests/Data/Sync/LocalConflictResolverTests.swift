@@ -384,8 +384,7 @@ final class LocalConflictResolverTests: XCTestCase {
         try await env.manager.syncPending(now: now)
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, "cust-1")])
-        let stored = try await env.queue.fetch(id: existing.id)
-        XCTAssertEqual(stored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: existing.id))
     }
 
     // MARK: - Environment
@@ -419,6 +418,7 @@ final class LocalConflictResolverTests: XCTestCase {
             statusHistory: local.statusHistory,
             signatures: local.signatures,
             editRequests: local.editRequests,
+            customerSatisfactions: local.customerSatisfactions,
             notifications: local.notifications
         )
         let resolver = LocalConflictResolver(

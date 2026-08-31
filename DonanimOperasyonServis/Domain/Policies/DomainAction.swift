@@ -19,16 +19,19 @@ enum DomainAction: Hashable, Sendable {
     case viewRolesMatrix
     case manageSystemConfiguration
     case viewSystemReports
+    case deleteWorkOrder
 
     // MARK: Operator
     case createWorkOrder
     case createCustomer
+    case updateCustomer
     case assignWorkOrder
     case viewAllWorkOrders
     case viewServiceReport
     case approveEditRequest
     case rejectEditRequest
     case resolveSyncConflict
+    case createCustomerSatisfaction
 
     // MARK: Technician
     case viewOwnAssignedWorkOrders

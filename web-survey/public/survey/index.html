@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f4c81">
+  <title>Teknik Servis Değerlendirme</title>
+  <link rel="stylesheet" href="/survey/styles.css">
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">Donanım Operasyon Servis</p>
+      <h1>Teknik Servis Değerlendirme</h1>
+      <p class="subtitle">Aldığınız hizmeti değerlendirin. Geri bildiriminiz hizmet kalitemizi geliştirmemize yardımcı olur.</p>
+    </header>
+
+    <section id="state-loading" class="card state">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Değerlendirme bilgileri yükleniyor...</p>
+    </section>
+
+    <section id="state-error" class="card state hidden" role="alert">
+      <h2>Yüklenemedi</h2>
+      <p id="error-message">Bağlantı geçersiz veya süresi dolmuş olabilir.</p>
+    </section>
+
+    <section id="state-success" class="card state hidden">
+      <div class="success-icon" aria-hidden="true">✓</div>
+      <h2>Teşekkürler!</h2>
+      <p>Değerlendirmeniz başarıyla kaydedildi.</p>
+    </section>
+
+    <form id="survey-form" class="hidden" novalidate>
+      <section class="card">
+        <h2>İş Emri Bilgisi</h2>
+        <dl class="info-grid">
+          <div><dt>İş Emri</dt><dd id="work-order-number">—</dd></div>
+          <div><dt>Müşteri</dt><dd id="customer-name">—</dd></div>
+          <div><dt>İş Türü</dt><dd id="work-type-label">—</dd></div>
+          <div><dt>Tamamlanma</dt><dd id="completed-at">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="card rating-block" data-dimension="overall">
+        <h2>Genel Memnuniyet</h2>
+        <div class="stars" role="radiogroup" aria-label="Genel Memnuniyet"></div>
+        <p class="rating-hint">Seçilen: <span data-selected>—</span></p>
+      </section>
+
+      <section class="card rating-block" data-dimension="serviceQuality">
+        <h2>Servis Kalitesi</h2>
+        <div class="stars" role="radiogroup" aria-label="Servis Kalitesi"></div>
+        <p class="rating-hint">Seçilen: <span data-selected>—</span></p>
+      </section>
+
+      <section class="card rating-block" data-dimension="staffCare">
+        <h2>Personel İlgisi</h2>
+        <div class="stars" role="radiogroup" aria-label="Personel İlgisi"></div>
+        <p class="rating-hint">Seçilen: <span data-selected>—</span></p>
+      </section>
+
+      <section class="card rating-block" data-dimension="resolutionSpeed">
+        <h2>Çözüm Hızı</h2>
+        <div class="stars" role="radiogroup" aria-label="Çözüm Hızı"></div>
+        <p class="rating-hint">Seçilen: <span data-selected>—</span></p>
+      </section>
+
+      <section class="card">
+        <h2>Deneyiminiz</h2>
+        <p class="muted">Uygun olanları seçin (isteğe bağlı)</p>
+        <div id="experience-tags" class="chip-row"></div>
+      </section>
+
+      <section class="card">
+        <h2>Yorum (İsteğe Bağlı)</h2>
+        <textarea id="freeform-comment" rows="4" placeholder="Deneyiminizi kısaca paylaşın..."></textarea>
+      </section>
+
+      <p id="submit-error" class="submit-error hidden" role="alert"></p>
+
+      <button id="submit-button" type="submit" class="primary-button" disabled>
+        Değerlendirmeyi Gönder
+      </button>
+    </form>
+  </main>
+  <script src="/survey/app.js" defer></script>
+</body>
+</html>

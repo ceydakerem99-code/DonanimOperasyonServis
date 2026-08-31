@@ -17,7 +17,7 @@ enum SyncRetryPolicy {
         switch error {
         case .networkUnavailable, .serverError:
             return true
-        case .unauthorized, .notFound, .invalidPayload, .conflict, .unknown:
+        case .unauthorized, .notFound, .invalidPayload, .conflict, .unknown, .dependencyBlocked:
             return false
         }
     }

@@ -85,6 +85,10 @@ actor InMemoryUserRepository: UserRepository {
         storage[user.id] = user
     }
 
+    func updateSelfServiceProfile(_ user: User) async throws {
+        storage[user.id] = user
+    }
+
     func delete(id: UserID) async throws {
         storage.removeValue(forKey: id)
     }
@@ -258,5 +262,36 @@ actor InMemoryEditRequestRepository: EditRequestRepository {
 
     func save(_ request: EditRequest) async throws {
         storage[request.id] = request
+    }
+}
+
+actor InMemoryCustomerSatisfactionRepository: CustomerSatisfactionRepository {
+    private var storage: [CustomerSatisfactionID: CustomerSatisfaction] = [:]
+
+    init(seed: [CustomerSatisfaction] = []) {
+        for item in seed { storage[item.id] = item }
+    }
+
+    func fetch(id: CustomerSatisfactionID) async throws -> CustomerSatisfaction {
+        guard let satisfaction = storage[id] else {
+            throw DomainError.notFound(entity: "CustomerSatisfaction", id: id.rawValue)
+        }
+        return satisfaction
+    }
+
+    func list(for workOrderId: WorkOrderID) async throws -> [CustomerSatisfaction] {
+        storage.values.filter { $0.workOrderId == workOrderId }
+    }
+
+    func listByCustomer(_ customerId: CustomerID) async throws -> [CustomerSatisfaction] {
+        storage.values.filter { $0.customerId == customerId }
+    }
+
+    func listByStatus(_ status: CustomerSatisfactionStatus) async throws -> [CustomerSatisfaction] {
+        storage.values.filter { $0.status == status }
+    }
+
+    func save(_ satisfaction: CustomerSatisfaction) async throws {
+        storage[satisfaction.id] = satisfaction
     }
 }

@@ -44,9 +44,9 @@ final class FakeAuthRepository: AuthRepository, @unchecked Sendable {
     }
 
     func seed(user: User, password: String) {
-        lock.withLock { state in
-            state.usersByID[user.id.rawValue] = user
-            state.passwordByEmail[user.email.lowercased()] = password
+        lock.withLock {
+            $0.usersByID[user.id.rawValue] = user
+            $0.passwordByEmail[user.email.lowercased()] = password
         }
     }
 
@@ -151,6 +151,30 @@ final class FakeAuthRepository: AuthRepository, @unchecked Sendable {
         lock.withLock { $0.currentUID = nil }
         try await clearPersistedSession(at: clock())
         emit(.signedOut)
+    }
+
+    func changePassword(currentPassword: String, newPassword: String) async throws {
+        if lock.withLock({ $0.networkFailure }) {
+            throw DomainError.authenticationFailed(.networkUnavailable)
+        }
+        guard let uid = lock.withLock({ $0.currentUID }) else {
+            throw DomainError.authenticationFailed(.sessionInvalid)
+        }
+        guard let user = lock.withLock({ $0.usersByID[uid] }) else {
+            throw DomainError.authenticationFailed(.sessionInvalid)
+        }
+        let emailKey = user.email.lowercased()
+        let expected = lock.withLock { $0.passwordByEmail[emailKey] }
+        guard let expected, expected == currentPassword else {
+            throw DomainError.authenticationFailed(.invalidCredentials)
+        }
+        guard newPassword.count >= PasswordPolicy.minimumLength else {
+            throw DomainError.authenticationFailed(.weakPassword)
+        }
+        guard newPassword != currentPassword else {
+            throw DomainError.authenticationFailed(.sameAsCurrentPassword)
+        }
+        lock.withLock { $0.passwordByEmail[emailKey] = newPassword }
     }
 
     func authStateChanges() async -> AsyncStream<AuthSessionEvent> {

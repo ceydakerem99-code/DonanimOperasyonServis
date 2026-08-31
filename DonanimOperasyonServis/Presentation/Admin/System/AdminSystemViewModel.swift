@@ -20,43 +20,82 @@ final class AdminSystemViewModel {
 
     private(set) var phase: Phase = .loading
     private(set) var health = AdminSystemHealth()
+    private(set) var syncStatusMessage: String?
     let appVersion: String
 
     private let actor: User
     private let dependencies: AdminDependencies
+    private let syncProgressStore: SyncProgressStore?
+    private let asyncLoad = AsyncLoadSession()
 
-    init(actor: User, dependencies: AdminDependencies) {
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool {
+        health.pendingSync > 0 || health.failedSync > 0 || health.inProgressSync > 0
+            || health.unresolvedConflicts > 0 || phase == .loaded
+    }
+
+    var accountService: ProfileAccountService {
+        dependencies.profileAccountService
+    }
+
+    init(
+        actor: User,
+        dependencies: AdminDependencies,
+        syncProgressStore: SyncProgressStore? = nil
+    ) {
         self.actor = actor
         self.dependencies = dependencies
+        self.syncProgressStore = syncProgressStore
         self.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
     }
 
     func load() async {
-        phase = .loading
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
         do {
             guard RoleAccessPolicy.can(.manageSystemConfiguration, as: actor.role) else {
                 throw DomainError.unauthorized(action: .manageSystemConfiguration)
             }
             let now = Date()
             let pending = try await dependencies.syncOperationRepository.countPending(now: now)
-            let failed = try await dependencies.syncOperationRepository.fetchFailed()
+            let issueSnapshot = try await dependencies.syncManager.issueSnapshot()
             let inProgress = try await dependencies.syncOperationRepository.fetchInProgress()
             let conflicts = try await dependencies.syncConflictRepository.listUnresolved()
             let online = await dependencies.networkReachability.isReachable
 
+            guard asyncLoad.isCurrent(generation) else { return }
             health = AdminSystemHealth(
                 pendingSync: pending,
-                failedSync: failed.count,
+                failedSync: issueSnapshot.activeFailedCount,
                 inProgressSync: inProgress.count,
                 unresolvedConflicts: conflicts.count,
                 isOnline: online
             )
+            if let store = syncProgressStore {
+                if store.isSyncing {
+                    syncStatusMessage = store.statusMessage
+                } else {
+                    syncStatusMessage = store.lastReport?.summaryLine ?? store.statusMessage
+                }
+            }
             phase = .loaded
         } catch is CancellationError {
-            return
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.error("Yükleme iptal edildi. Tekrar deneyin.")
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error(error.adminMessage)
         } catch {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error("Sistem bilgileri yüklenemedi.")
         }
     }

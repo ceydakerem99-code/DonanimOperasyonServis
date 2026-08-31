@@ -13,18 +13,21 @@ struct RoleAppShellView: View {
             AdminAppShellView(
                 user: user,
                 dependencies: container.makeAdminDependencies(),
+                syncProgressStore: container.syncProgressStore,
                 onLogout: onLogout
             )
         case .operator:
             OperatorAppShellView(
                 user: user,
                 dependencies: container.makeOperatorDependencies(),
+                syncProgressStore: container.syncProgressStore,
                 onLogout: onLogout
             )
         case .technician:
             TechnicianAppShellView(
                 user: user,
                 dependencies: container.makeTechnicianDependencies(),
+                syncProgressStore: container.syncProgressStore,
                 onLogout: onLogout
             )
         }

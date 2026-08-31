@@ -42,6 +42,15 @@ protocol FirestoreDataSource: Sendable {
         id: String
     ) async throws
 
+    /// Partial document update (Firestore `updateData`). Used for
+    /// self-service user profile patches that must not touch fields
+    /// blocked by security rules on full-document writes.
+    func updateFields<T: Encodable & Sendable>(
+        _ value: T,
+        collection: FirestoreCollection,
+        id: String
+    ) async throws
+
     func delete(
         collection: FirestoreCollection,
         id: String

@@ -26,6 +26,10 @@ final class OperatorEditRequestListViewModel {
 
     private let actor: User
     private let dependencies: OperatorDependencies
+    private let asyncLoad = AsyncLoadSession()
+
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool { !rows.isEmpty }
 
     init(actor: User, dependencies: OperatorDependencies) {
         self.actor = actor
@@ -33,7 +37,10 @@ final class OperatorEditRequestListViewModel {
     }
 
     func load() async {
-        phase = .loading
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
         do {
             let requests: [EditRequest]
             if let status = selectedFilter.status {
@@ -41,11 +48,26 @@ final class OperatorEditRequestListViewModel {
             } else {
                 requests = try await loadAllRequests()
             }
-            rows = try await makeRows(from: requests)
+            guard asyncLoad.isCurrent(generation) else { return }
+            rows = await makeRows(from: requests)
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = rows.isEmpty ? .empty : .loaded
+        } catch is CancellationError {
+            guard asyncLoad.isCurrent(generation) else { return }
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.empty
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error(error.operatorMessage)
         } catch {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error("Düzenleme talepleri yüklenemedi.")
         }
     }
@@ -63,17 +85,18 @@ final class OperatorEditRequestListViewModel {
         return all
     }
 
-    private func makeRows(from requests: [EditRequest]) async throws -> [OperatorEditRequestRow] {
+    /// Skips orphaned requests so one missing WO/user cannot block the inbox.
+    private func makeRows(from requests: [EditRequest]) async -> [OperatorEditRequestRow] {
         var rows: [OperatorEditRequestRow] = []
         for request in requests.sorted(by: { $0.createdAt > $1.createdAt }) {
-            let order = try await dependencies.getWorkOrder.execute(actor: actor, id: request.workOrderId)
-            let requester = try await dependencies.userRepository.fetch(id: request.requestedByUserId)
-            let field = EditableWorkOrderField(rawValue: request.field)?.rawValue ?? request.field
+            let order = try? await dependencies.getWorkOrder.execute(actor: actor, id: request.workOrderId)
+            let requester = try? await dependencies.userRepository.fetch(id: request.requestedByUserId)
+            let field = EditableWorkOrderField(rawValue: request.field)?.displayName ?? request.field
             rows.append(
                 OperatorEditRequestRow(
                     id: request.id,
-                    workOrderNumber: order.workOrderNumber,
-                    requesterName: requester.fullName,
+                    workOrderNumber: order?.workOrderNumber ?? request.workOrderId.rawValue,
+                    requesterName: requester?.fullName ?? "Bilinmeyen kullanıcı",
                     reason: request.reason,
                     fieldLabel: field,
                     status: request.status
@@ -119,6 +142,10 @@ final class OperatorEditRequestDetailViewModel {
             workOrderNumber = order.workOrderNumber
             requesterName = requester.fullName
             phase = .loaded
+        } catch is CancellationError {
+            if phase == .loading {
+                phase = .error("Yükleme iptal edildi. Tekrar deneyin.")
+            }
         } catch let error as DomainError {
             phase = .error(error.operatorMessage)
         } catch {
@@ -129,8 +156,13 @@ final class OperatorEditRequestDetailViewModel {
     func approve() async {
         phase = .submitting
         do {
-            _ = try await dependencies.approveEditRequest.execute(actor: actor, requestId: requestId)
+            _ = try await dependencies.editRequestService.approveWithSync(
+                actor: actor,
+                requestId: requestId
+            )
             await load()
+        } catch is CancellationError {
+            phase = .loaded
         } catch let error as DomainError {
             phase = .error(error.operatorMessage)
         } catch {
@@ -141,8 +173,13 @@ final class OperatorEditRequestDetailViewModel {
     func reject() async {
         phase = .submitting
         do {
-            _ = try await dependencies.rejectEditRequest.execute(actor: actor, requestId: requestId)
+            _ = try await dependencies.editRequestService.rejectWithSync(
+                actor: actor,
+                requestId: requestId
+            )
             await load()
+        } catch is CancellationError {
+            phase = .loaded
         } catch let error as DomainError {
             phase = .error(error.operatorMessage)
         } catch {

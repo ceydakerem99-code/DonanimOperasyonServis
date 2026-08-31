@@ -231,6 +231,27 @@ final class AuthSessionControllerTests: XCTestCase {
         XCTAssertNil(sessionId)
     }
 
+    func testSignInDoesNotBounceThroughCheckingSessionWithAuthObserver() async throws {
+        let harness = try SwiftDataTestHarness()
+        let (controller, auth) = makeController(store: harness.store, users: harness.users)
+        let user = DomainFixtures.adminUser(email: "adminpanel@dops.com")
+        try await harness.users.save(user)
+        auth.seed(user: user, password: "secret")
+        await controller.start()
+        XCTAssertEqual(controller.state, .unauthenticated)
+
+        await controller.signIn(email: user.email, password: "secret")
+        guard case .authenticated(let signedIn) = controller.state else {
+            return XCTFail("expected authenticated, got \(controller.state)")
+        }
+        XCTAssertEqual(signedIn.email, user.email)
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        guard case .authenticated = controller.state else {
+            return XCTFail("auth observer must not bounce login back to unauthenticated")
+        }
+    }
+
     func testSignOutPreservesBusinessDataWithAuthObserverActive() async throws {
         let harness = try SwiftDataTestHarness()
         let (controller, auth) = makeController(store: harness.store, users: harness.users)

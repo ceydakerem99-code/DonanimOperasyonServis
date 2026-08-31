@@ -19,6 +19,8 @@ final class UserModel {
     var roleRaw: String
     var phoneNumberRaw: String?
     var isActive: Bool
+    /// JSON object of preference key → Bool. `nil` / empty → defaults on.
+    var notificationPreferencesJSON: Data?
 
     var createdAt: Date
     var updatedAt: Date
@@ -30,6 +32,7 @@ final class UserModel {
         roleRaw: String,
         phoneNumberRaw: String?,
         isActive: Bool,
+        notificationPreferencesJSON: Data? = nil,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -39,6 +42,7 @@ final class UserModel {
         self.roleRaw = roleRaw
         self.phoneNumberRaw = phoneNumberRaw
         self.isActive = isActive
+        self.notificationPreferencesJSON = notificationPreferencesJSON
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -56,6 +60,7 @@ extension UserModel {
             roleRaw: domain.role.rawValue,
             phoneNumberRaw: domain.phoneNumber?.rawValue,
             isActive: domain.isActive,
+            notificationPreferencesJSON: Self.encodePreferences(domain.notificationPreferences),
             createdAt: domain.createdAt,
             updatedAt: domain.updatedAt
         )
@@ -70,6 +75,7 @@ extension UserModel {
         self.roleRaw = domain.role.rawValue
         self.phoneNumberRaw = domain.phoneNumber?.rawValue
         self.isActive = domain.isActive
+        self.notificationPreferencesJSON = Self.encodePreferences(domain.notificationPreferences)
         self.createdAt = domain.createdAt
         self.updatedAt = domain.updatedAt
     }
@@ -87,8 +93,23 @@ extension UserModel {
             role: role,
             phoneNumber: phoneNumberRaw.map(PhoneNumber.init),
             isActive: isActive,
+            notificationPreferences: Self.decodePreferences(notificationPreferencesJSON),
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+
+    private static func encodePreferences(_ prefs: NotificationPreferences) -> Data? {
+        guard !prefs.enabledByKey.isEmpty else { return nil }
+        return try? JSONEncoder().encode(prefs.enabledByKey)
+    }
+
+    private static func decodePreferences(_ data: Data?) -> NotificationPreferences {
+        guard let data,
+              let map = try? JSONDecoder().decode([String: Bool].self, from: data)
+        else {
+            return .default
+        }
+        return NotificationPreferences(enabledByKey: map)
     }
 }

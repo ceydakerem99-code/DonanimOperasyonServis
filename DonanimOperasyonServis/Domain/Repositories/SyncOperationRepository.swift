@@ -29,6 +29,9 @@ protocol SyncOperationRepository: Sendable {
     func fetchInProgress() async throws -> [SyncOperation]
     func fetchFailed() async throws -> [SyncOperation]
     func fetchConflicts() async throws -> [SyncOperation]
+    /// Every queue row with the given lifecycle status (read-only
+    /// listing; does not apply retry/backoff eligibility rules).
+    func fetch(status: SyncStatus) async throws -> [SyncOperation]
     func update(_ operation: SyncOperation) async throws
     /// Removes a single row. Only `.succeeded` operations may be
     /// deleted this way; any other status is rejected.
@@ -37,6 +40,10 @@ protocol SyncOperationRepository: Sendable {
     /// / failed / conflict untouched. No scheduler — callers decide
     /// when to run this.
     func deleteCompleted() async throws
+    /// Removes `.failed` rows by id. Used to prune stale failures that
+    /// a newer `.succeeded` mutation of the same entity has superseded.
+    /// Any other status is rejected.
+    func deleteFailed(ids: [SyncOperationID]) async throws
     func countPending(now: Date) async throws -> Int
     /// Moves a `.failed` row back to `.pending` so
     /// `SyncStatusStateMachine` can take `pending → inProgress`.

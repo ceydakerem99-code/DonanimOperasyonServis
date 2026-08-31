@@ -21,6 +21,7 @@ struct SwiftDataTestHarness {
     let statusHistory: SwiftDataWorkOrderStatusHistoryRepository
     let signatures: SwiftDataSignatureRepository
     let editRequests: SwiftDataEditRequestRepository
+    let customerSatisfactions: SwiftDataCustomerSatisfactionRepository
     let notifications: SwiftDataNotificationRepository
     let syncOperations: SwiftDataSyncOperationRepository
     let syncConflicts: SwiftDataSyncConflictRepository
@@ -39,6 +40,7 @@ struct SwiftDataTestHarness {
         self.statusHistory = SwiftDataWorkOrderStatusHistoryRepository(store: store)
         self.signatures = SwiftDataSignatureRepository(store: store)
         self.editRequests = SwiftDataEditRequestRepository(store: store)
+        self.customerSatisfactions = SwiftDataCustomerSatisfactionRepository(store: store)
         self.notifications = SwiftDataNotificationRepository(store: store)
         self.syncOperations = SwiftDataSyncOperationRepository(store: store)
         self.syncConflicts = SwiftDataSyncConflictRepository(store: store)

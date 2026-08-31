@@ -17,6 +17,8 @@ struct FirestoreUserDTO: Codable, Hashable, Sendable {
     let role: String
     let phoneNumber: String?
     let isActive: Bool
+    /// Optional map of preference key → enabled. Missing = all on.
+    let notificationPreferences: [String: Bool]?
     let createdAt: Date
     let updatedAt: Date
 }
@@ -30,6 +32,9 @@ extension FirestoreUserDTO {
         self.role = domain.role.rawValue
         self.phoneNumber = domain.phoneNumber?.rawValue
         self.isActive = domain.isActive
+        self.notificationPreferences = domain.notificationPreferences.enabledByKey.isEmpty
+            ? nil
+            : domain.notificationPreferences.enabledByKey
         self.createdAt = domain.createdAt
         self.updatedAt = domain.updatedAt
     }
@@ -46,8 +51,23 @@ extension FirestoreUserDTO {
             role: role,
             phoneNumber: phoneNumber.map(PhoneNumber.init),
             isActive: isActive,
+            notificationPreferences: NotificationPreferences(
+                enabledByKey: notificationPreferences ?? [:]
+            ),
             createdAt: createdAt,
             updatedAt: updatedAt
         )
+    }
+}
+
+/// Partial `users/{uid}` write allowed by self-service Firestore rules.
+struct FirestoreUserSelfServicePatchDTO: Encodable, Sendable {
+    let notificationPreferences: [String: Bool]?
+    let updatedAt: Date
+
+    init(domain: User) {
+        let prefs = domain.notificationPreferences.enabledByKey
+        self.notificationPreferences = prefs.isEmpty ? nil : prefs
+        self.updatedAt = domain.updatedAt
     }
 }

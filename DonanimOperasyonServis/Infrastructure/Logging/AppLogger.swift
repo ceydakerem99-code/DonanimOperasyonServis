@@ -39,4 +39,7 @@ enum AppLogger {
 
     /// Notifications (in-app + push).
     static let notifications = Logger(subsystem: subsystem, category: "notifications")
+
+    /// Shadow Realtime WebSocket gateway (FAZ 2+). Never log ID tokens here.
+    static let realtime = Logger(subsystem: subsystem, category: "realtime")
 }

@@ -18,7 +18,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
             clock: { DomainFixtures.referenceDate }
         )
 
-        let signedIn = try await repository.signIn(email: user.email, password: "any")
+        let signedIn = try await repository.signIn(email: user.email, password: "password")
         XCTAssertEqual(signedIn.id, user.id)
         let sessionId = try await localStore.store.currentSessionUserId()
         XCTAssertEqual(sessionId, user.id.rawValue)
@@ -38,7 +38,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
         )
 
         await XCTAssertThrowsErrorAsync(
-            try await repository.signIn(email: user.email, password: "any")
+            try await repository.signIn(email: user.email, password: "password")
         ) { error in
             XCTAssertEqual(
                 error as? DomainError,
@@ -50,6 +50,59 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
         XCTAssertNil(sessionId)
         let currentUID = authService.currentUID
         XCTAssertNil(currentUID)
+    }
+
+    func testSignInBootstrapsFirstAdminWhenFirestoreProfileMissing() async throws {
+        let harness = FirebaseTestHarness()
+        let authService = FakeFirebaseAuthService()
+        let uid = FirstAdminBootstrap.uid
+        let email = "bootstrap-admin@test.com"
+        authService.register(email: email, uid: uid, displayName: "Bootstrap Admin")
+        let localStore = try SwiftDataTestHarness()
+        let repository = FirebaseAuthRepository(
+            authService: authService,
+            remoteUsers: harness.users,
+            localUsers: localStore.users,
+            store: localStore.store,
+            clock: { DomainFixtures.referenceDate }
+        )
+
+        let signedIn = try await repository.signIn(email: email, password: "password")
+
+        XCTAssertEqual(signedIn.id.rawValue, uid)
+        XCTAssertEqual(signedIn.role, .admin)
+        XCTAssertEqual(signedIn.email, email)
+        XCTAssertEqual(signedIn.fullName, "Bootstrap Admin")
+        XCTAssertTrue(signedIn.isActive)
+
+        let remote = try await harness.users.fetch(id: UserID(uid))
+        XCTAssertEqual(remote.role, .admin)
+        let sessionId = try await localStore.store.currentSessionUserId()
+        XCTAssertEqual(sessionId, uid)
+    }
+
+    func testSignInBootstrapsAdminPanelEmailEvenWhenUIDNotAllowlisted() async throws {
+        let harness = FirebaseTestHarness()
+        let authService = FakeFirebaseAuthService()
+        let uid = "unexpected-admin-uid-xyz"
+        let email = "adminpanel@dops.com"
+        authService.register(email: email, uid: uid, displayName: "Admin Panel")
+        let localStore = try SwiftDataTestHarness()
+        let repository = FirebaseAuthRepository(
+            authService: authService,
+            remoteUsers: harness.users,
+            localUsers: localStore.users,
+            store: localStore.store,
+            clock: { DomainFixtures.referenceDate }
+        )
+
+        let signedIn = try await repository.signIn(email: email, password: "password")
+
+        XCTAssertEqual(signedIn.id.rawValue, uid)
+        XCTAssertEqual(signedIn.role, .admin)
+        XCTAssertEqual(signedIn.email, email)
+        let remote = try await harness.users.fetch(id: UserID(uid))
+        XCTAssertEqual(remote.email, email)
     }
 
     func testLogoutClearsSessionOnly() async throws {
@@ -67,7 +120,7 @@ final class FirebaseAuthRepositoryTests: XCTestCase {
             localUsers: localStore.users,
             store: localStore.store
         )
-        _ = try await repository.signIn(email: user.email, password: "any")
+        _ = try await repository.signIn(email: user.email, password: "password")
         try await repository.signOut()
 
         let sessionId = try await localStore.store.currentSessionUserId()

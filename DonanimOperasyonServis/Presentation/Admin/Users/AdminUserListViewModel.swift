@@ -50,6 +50,10 @@ final class AdminUserListViewModel {
     private let actor: User
     private let dependencies: AdminDependencies
     private var allRows: [AdminUserRowData] = []
+    private let asyncLoad = AsyncLoadSession()
+
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool { !rows.isEmpty }
 
     init(actor: User, dependencies: AdminDependencies) {
         self.actor = actor
@@ -57,21 +61,36 @@ final class AdminUserListViewModel {
     }
 
     func load() async {
-        phase = .loading
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
+        await dependencies.localDirectoryCacheRefresh.refreshUsers()
         do {
             let users = try await dependencies.listUsers.execute(
                 actor: actor,
                 role: roleFilter,
                 isActive: selectedFilter.isActive
             )
+            guard asyncLoad.isCurrent(generation) else { return }
             allRows = users.map(Self.mapRow)
             applySearch()
             phase = rows.isEmpty ? .empty : .loaded
         } catch is CancellationError {
-            return
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.empty
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error(error.adminMessage)
         } catch {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error("Kullanıcılar yüklenemedi.")
         }
     }

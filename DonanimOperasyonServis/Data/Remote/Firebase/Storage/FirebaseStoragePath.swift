@@ -37,3 +37,19 @@ enum FirebaseStoragePath: Hashable, Sendable {
         .workOrderSignature(workOrderId: workOrderId.rawValue, signatureId: signatureId)
     }
 }
+
+/// Local-only marker used when bytes are on disk but not yet in
+/// Firebase Storage. Sync drain must upload and replace this with
+/// the real `FirebaseStoragePath.rawValue` before remote metadata
+/// writes.
+enum PendingStoragePath {
+    static let prefix = "pending://"
+
+    static func wrap(_ remotePath: String) -> String {
+        prefix + remotePath
+    }
+
+    static func isPending(_ storagePath: String?) -> Bool {
+        storagePath?.hasPrefix(prefix) == true
+    }
+}

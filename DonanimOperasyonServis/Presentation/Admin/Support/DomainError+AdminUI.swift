@@ -9,6 +9,8 @@ extension DomainError {
             return "Bu işlem için yetkiniz yok."
         case .notFound:
             return "Kayıt bulunamadı."
+        case .workOrderLocked:
+            return "Tamamlanan iş emirleri silinemez."
         default:
             return "Bir hata oluştu. Lütfen tekrar deneyin."
         }

@@ -9,6 +9,7 @@ struct TechnicianWorkOrderService: Sendable {
     let captureLocationUseCase: CaptureWorkOrderLocationUseCase
     let captureSignatureUseCase: CaptureSignatureUseCase
     let statusHistoryRepository: WorkOrderStatusHistoryRepository
+    let customerSatisfactionService: TechnicianCustomerSatisfactionService
     let syncOperationRepository: SyncOperationRepository
     let storageDataSource: FirebaseStorageDataSource
 
@@ -32,6 +33,7 @@ struct TechnicianWorkOrderService: Sendable {
             entityId: order.id.rawValue,
             queue: syncOperationRepository,
             now: now,
+            actorUserId: actor.id.rawValue,
             workOrderStatus: order.status
         )
         let history = try await statusHistoryRepository.list(for: order.id)
@@ -40,7 +42,9 @@ struct TechnicianWorkOrderService: Sendable {
                 entityType: .workOrderStatusHistory,
                 entityId: latest.id,
                 queue: syncOperationRepository,
-                now: now
+                now: now,
+                actorUserId: actor.id.rawValue,
+                payloadReference: order.id.rawValue
             )
         }
         return order
@@ -50,6 +54,7 @@ struct TechnicianWorkOrderService: Sendable {
     func complete(
         actor: User,
         orderId: WorkOrderID,
+        completedLocationId: String?,
         at now: Date = Date()
     ) async throws -> WorkOrder {
         let order = try await completeWorkOrder.execute(
@@ -57,12 +62,27 @@ struct TechnicianWorkOrderService: Sendable {
             orderId: orderId,
             at: now
         )
-        try await TechnicianSyncEnqueue.enqueueUpdate(
+
+        var dependsOn: SyncOperationID?
+        if let completedLocationId {
+            let locationOps = try await syncOperationRepository.list(
+                entityType: .workOrderLocation,
+                entityId: completedLocationId
+            )
+            dependsOn = locationOps
+                .first(where: { $0.operationType == .create })?
+                .id
+        }
+
+        let workOrderUpdateOperation = try await TechnicianSyncEnqueue.enqueueUpdate(
             entityType: .workOrder,
             entityId: order.id.rawValue,
             queue: syncOperationRepository,
             now: now,
-            workOrderStatus: .completed
+            actorUserId: actor.id.rawValue,
+            workOrderStatus: .completed,
+            dependsOnOperationId: dependsOn,
+            allowsCompletedWorkOrderUpdate: true
         )
         let history = try await statusHistoryRepository.list(for: order.id)
         if let latest = history.last {
@@ -70,9 +90,17 @@ struct TechnicianWorkOrderService: Sendable {
                 entityType: .workOrderStatusHistory,
                 entityId: latest.id,
                 queue: syncOperationRepository,
-                now: now
+                now: now,
+                actorUserId: actor.id.rawValue,
+                payloadReference: order.id.rawValue
             )
         }
+        _ = try await customerSatisfactionService.createOnWorkOrderCompletionWithSync(
+            actor: actor,
+            orderId: order.id,
+            at: now,
+            dependsOnOperationId: workOrderUpdateOperation.id
+        )
         return order
     }
 
@@ -93,7 +121,9 @@ struct TechnicianWorkOrderService: Sendable {
             entityType: .workOrderNote,
             entityId: note.id,
             queue: syncOperationRepository,
-            now: now
+            now: now,
+            actorUserId: actor.id.rawValue,
+            payloadReference: orderId.rawValue
         )
         return note
     }
@@ -107,12 +137,24 @@ struct TechnicianWorkOrderService: Sendable {
         photoId: String = UUID().uuidString,
         at now: Date = Date()
     ) async throws -> WorkOrderPhoto {
+        guard !imageData.isEmpty else {
+            throw DomainError.invalidData(reason: "photo.dataEmpty")
+        }
+
+        // Persist bytes locally first so offline captures are not lost
+        // when remote upload is unavailable.
+        _ = try TechnicianLocalMediaStore.savePhoto(
+            data: imageData,
+            workOrderId: orderId,
+            photoId: photoId
+        )
+
         let path = FirebaseStoragePath.photo(workOrderId: orderId, photoId: photoId)
         let storagePath: String?
         if await uploadIfPossible(data: imageData, to: path) {
             storagePath = path.rawValue
         } else {
-            storagePath = "pending://\(path.rawValue)"
+            storagePath = PendingStoragePath.wrap(path.rawValue)
         }
         let photo = try await addPhotoUseCase.execute(
             actor: actor,
@@ -126,7 +168,9 @@ struct TechnicianWorkOrderService: Sendable {
             entityType: .workOrderPhoto,
             entityId: photo.id,
             queue: syncOperationRepository,
-            now: now
+            now: now,
+            actorUserId: actor.id.rawValue,
+            payloadReference: orderId.rawValue
         )
         return photo
     }
@@ -150,7 +194,9 @@ struct TechnicianWorkOrderService: Sendable {
             entityType: .workOrderLocation,
             entityId: location.id,
             queue: syncOperationRepository,
-            now: now
+            now: now,
+            actorUserId: actor.id.rawValue,
+            payloadReference: orderId.rawValue
         )
         return location
     }
@@ -165,12 +211,24 @@ struct TechnicianWorkOrderService: Sendable {
         signatureId: String = UUID().uuidString,
         at now: Date = Date()
     ) async throws -> Signature {
+        guard !imageData.isEmpty else {
+            throw DomainError.invalidData(reason: "signature.dataEmpty")
+        }
+
+        // Persist bytes locally first so offline captures are not lost
+        // when remote upload is unavailable.
+        _ = try TechnicianLocalMediaStore.saveSignature(
+            data: imageData,
+            workOrderId: orderId,
+            signatureId: signatureId
+        )
+
         let path = FirebaseStoragePath.signature(workOrderId: orderId, signatureId: signatureId)
         let storagePath: String?
         if await uploadIfPossible(data: imageData, to: path) {
             storagePath = path.rawValue
         } else {
-            storagePath = "pending://\(path.rawValue)"
+            storagePath = PendingStoragePath.wrap(path.rawValue)
         }
         let signature = try await captureSignatureUseCase.execute(
             actor: actor,
@@ -185,7 +243,9 @@ struct TechnicianWorkOrderService: Sendable {
             entityType: .signature,
             entityId: signature.id,
             queue: syncOperationRepository,
-            now: now
+            now: now,
+            actorUserId: actor.id.rawValue,
+            payloadReference: orderId.rawValue
         )
         return signature
     }

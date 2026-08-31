@@ -76,6 +76,33 @@ actor FakeFirestoreDataSource: FirestoreDataSource {
         }
     }
 
+    func updateFields<T: Encodable & Sendable>(
+        _ value: T,
+        collection: FirestoreCollection,
+        id: String
+    ) async throws {
+        let key = DocumentKey(collection: collection, id: id)
+        guard let existing = documents[key] else {
+            throw FirebaseError.notFound
+        }
+        do {
+            let patchData = try FirestoreJSON.encoder.encode(value)
+            guard let patchJSON = try JSONSerialization.jsonObject(with: patchData) as? [String: Any],
+                  var existingJSON = try JSONSerialization.jsonObject(with: existing) as? [String: Any]
+            else {
+                throw FirebaseError.decodingFailed(reason: "updateFields.mergeFailed")
+            }
+            for (field, patched) in patchJSON {
+                existingJSON[field] = patched
+            }
+            documents[key] = try JSONSerialization.data(withJSONObject: existingJSON)
+        } catch let error as FirebaseError {
+            throw error
+        } catch {
+            throw FirebaseError.encodingFailed(reason: String(describing: error))
+        }
+    }
+
     func delete(collection: FirestoreCollection, id: String) async throws {
         documents.removeValue(forKey: DocumentKey(collection: collection, id: id))
     }

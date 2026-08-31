@@ -76,4 +76,34 @@ enum EditableWorkOrderField: String, CaseIterable, Hashable, Sendable {
     case serialNumber
     case scheduledDate
     case priority
+
+    /// Canonical string snapshot stored on `EditRequest.currentValue` /
+    /// `requestedValue` (and parsed by `ApproveEditRequestUseCase`).
+    func value(on workOrder: WorkOrder) -> String {
+        switch self {
+        case .issueDescription:
+            return workOrder.issueDescription ?? ""
+        case .deviceBrand:
+            return workOrder.deviceBrand
+        case .deviceModel:
+            return workOrder.deviceModel
+        case .serialNumber:
+            return workOrder.serialNumber
+        case .scheduledDate:
+            return String(workOrder.scheduledDate.timeIntervalSince1970)
+        case .priority:
+            return workOrder.priority.rawValue
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .issueDescription: return "Sorun Açıklaması"
+        case .deviceBrand: return "Cihaz Markası"
+        case .deviceModel: return "Cihaz Modeli"
+        case .serialNumber: return "Seri Numarası"
+        case .scheduledDate: return "Planlanan Tarih"
+        case .priority: return "Öncelik"
+        }
+    }
 }

@@ -8,14 +8,17 @@ extension DomainAction {
         case .viewRolesMatrix: return "Rol matrisini görüntüleme"
         case .manageSystemConfiguration: return "Sistem yapılandırması"
         case .viewSystemReports: return "Sistem raporları"
+        case .deleteWorkOrder: return "İş emri silme"
         case .createWorkOrder: return "İş emri oluşturma"
         case .createCustomer: return "Müşteri oluşturma"
+        case .updateCustomer: return "Müşteri bilgilerini güncelleme"
         case .assignWorkOrder: return "İş emri atama"
         case .viewAllWorkOrders: return "Tüm iş emirlerini görüntüleme"
         case .viewServiceReport: return "Servis raporu görüntüleme"
         case .approveEditRequest: return "Düzenleme talebi onaylama"
         case .rejectEditRequest: return "Düzenleme talebi reddetme"
         case .resolveSyncConflict: return "Senkron çakışması çözme"
+        case .createCustomerSatisfaction: return "Müşteri memnuniyeti anketi oluşturma"
         case .viewOwnAssignedWorkOrders: return "Atanan iş emirlerini görüntüleme"
         case .acceptWorkOrder: return "İş emri kabul etme"
         case .startTravelToCustomer: return "Yola çıkma"
@@ -35,9 +38,10 @@ extension DomainAction {
 
 enum RoleAccessPolicyAdminUI {
     static let allActions: [DomainAction] = [
-        .manageUsers, .viewRolesMatrix, .manageSystemConfiguration, .viewSystemReports,
-        .createWorkOrder, .createCustomer, .assignWorkOrder, .viewAllWorkOrders,
+        .manageUsers, .viewRolesMatrix, .manageSystemConfiguration, .viewSystemReports, .deleteWorkOrder,
+        .createWorkOrder, .createCustomer, .updateCustomer, .assignWorkOrder, .viewAllWorkOrders,
         .viewServiceReport, .approveEditRequest, .rejectEditRequest, .resolveSyncConflict,
+        .createCustomerSatisfaction,
         .viewOwnAssignedWorkOrders, .acceptWorkOrder, .startTravelToCustomer,
         .markArrivedAtCustomer, .startServiceWork, .pauseServiceWork, .resumeServiceWork,
         .addWorkOrderNote, .addWorkOrderPhoto, .captureLocationSample, .captureSignature,

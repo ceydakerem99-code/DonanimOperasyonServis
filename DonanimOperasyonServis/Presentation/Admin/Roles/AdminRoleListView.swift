@@ -6,18 +6,17 @@ struct AdminRoleListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.m) {
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Roller yükleniyor...")
-                        .frame(minHeight: 240)
-
-                case .error(let message):
-                    ErrorBanner(title: "Roller yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
-                    }
-
-                case .empty, .loaded:
+            LazyVStack(alignment: .leading, spacing: AppSpacing.m) {
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: false,
+                    loadingMessage: "Roller yükleniyor...",
+                    errorTitle: "Roller yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } }
+                ) {
                     ForEach(viewModel.rows) { row in
                         roleRow(row)
                     }

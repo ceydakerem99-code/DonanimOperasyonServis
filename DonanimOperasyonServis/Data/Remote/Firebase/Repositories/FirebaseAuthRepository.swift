@@ -73,6 +73,18 @@ struct FirebaseAuthRepository: AuthRepository {
         try await clearSession(at: clock())
     }
 
+    func changePassword(currentPassword: String, newPassword: String) async throws {
+        guard let email = authService.currentEmail, !email.isEmpty else {
+            throw DomainError.authenticationFailed(.sessionInvalid)
+        }
+        do {
+            try await authService.reauthenticate(email: email, password: currentPassword)
+            try await authService.updatePassword(newPassword)
+        } catch {
+            throw FirebaseAuthErrorMapper.map(error)
+        }
+    }
+
     func authStateChanges() async -> AsyncStream<AuthSessionEvent> {
         let stream = authService.authStateChanges()
         return AsyncStream { continuation in
@@ -98,11 +110,16 @@ struct FirebaseAuthRepository: AuthRepository {
             user = try await remoteUsers.fetch(id: userID)
         } catch let error as DomainError {
             if case .notFound = error {
-                try? await authService.signOut()
-                try await clearSession(at: now)
-                throw DomainError.authenticationFailed(.userDocumentMissing)
+                if let bootstrapped = try await bootstrapFirstAdminIfNeeded(uid: uid, now: now) {
+                    user = bootstrapped
+                } else {
+                    try? await authService.signOut()
+                    try await clearSession(at: now)
+                    throw DomainError.authenticationFailed(.userDocumentMissing)
+                }
+            } else {
+                throw error
             }
-            throw error
         } catch {
             throw FirebaseAuthErrorMapper.map(error)
         }
@@ -116,6 +133,49 @@ struct FirebaseAuthRepository: AuthRepository {
         try await localUsers.save(user)
         try await store.setCurrentSessionUserId(uid, at: now)
         return user
+    }
+
+    /// Creates `users/{uid}` once for known first-admin Auth UIDs when the
+    /// Firestore profile is missing. Relies on the temporary rules
+    /// bootstrap `allow create` for those UIDs + `role == "admin"`.
+    private func bootstrapFirstAdminIfNeeded(uid: String, now: Date) async throws -> User? {
+        guard FirstAdminBootstrap.matches(uid: uid, email: authService.currentEmail) else {
+            AppLogger.auth.error(
+                "First-admin bootstrap skipped: uid/email not allowlisted uid=\(uid, privacy: .public) email=\(authService.currentEmail ?? "nil", privacy: .public)"
+            )
+            return nil
+        }
+        guard let email = authService.currentEmail, !email.isEmpty else {
+            AppLogger.auth.error(
+                "First-admin bootstrap skipped: Auth email missing for \(uid, privacy: .public)"
+            )
+            return nil
+        }
+
+        let trimmedName = authService.currentDisplayName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullName = (trimmedName?.isEmpty == false) ? trimmedName! : "Admin"
+
+        let seed = User(
+            id: UserID(uid),
+            email: email,
+            fullName: fullName,
+            role: .admin,
+            phoneNumber: nil,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        do {
+            try await remoteUsers.save(seed)
+            return try await remoteUsers.fetch(id: seed.id)
+        } catch {
+            AppLogger.auth.error(
+                "First-admin Firestore bootstrap failed for \(uid, privacy: .public): \(String(describing: error), privacy: .public)"
+            )
+            return nil
+        }
     }
 
     private func clearSession(at timestamp: Date) async throws {

@@ -2,19 +2,29 @@ import SwiftUI
 
 struct TechnicianServiceReportView: View {
     let workOrderId: WorkOrderID
-    @State private var viewModel: TechnicianWorkOrderDetailViewModel?
+    let dependencies: TechnicianDependencies
+    let actor: User
+    @State private var viewModel: TechnicianWorkOrderDetailViewModel
+    @State private var pdfFileURL: URL?
+    @State private var isExportingPDF = false
+
+    init(workOrderId: WorkOrderID, dependencies: TechnicianDependencies, actor: User) {
+        self.workOrderId = workOrderId
+        self.dependencies = dependencies
+        self.actor = actor
+        _viewModel = State(initialValue: TechnicianWorkOrderDetailViewModel(
+            workOrderId: workOrderId,
+            actor: actor,
+            dependencies: dependencies
+        ))
+    }
 
     var body: some View {
-        Group {
-            if let viewModel {
-                reportBody(viewModel)
-            } else {
-                LoadingView(message: "Rapor yükleniyor...")
-            }
-        }
-        .navigationTitle("Servis Raporu")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel?.load() }
+        reportBody(viewModel)
+            .navigationTitle("Servis Raporu")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { pdfToolbar }
+            .task { await viewModel.load() }
     }
 
     @ViewBuilder
@@ -30,55 +40,50 @@ struct TechnicianServiceReportView: View {
         case .loaded:
             if let content = viewModel.content {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: AppSpacing.l) {
-                        HStack {
-                            Text(content.workOrder.workOrderNumber).font(AppFont.title)
-                            Spacer()
-                            StatusChip(status: WorkOrderPresentationMapping.appStatus(from: content.workOrder.status))
-                        }
-                        InfoRow(title: "Müşteri", value: content.customer.name, systemImage: "building.2")
-                        InfoRow(title: "İş Türü", value: content.workOrder.workType.displayName, systemImage: "briefcase")
-                        if let completedAt = content.workOrder.completedAt {
-                            InfoRow(
-                                title: "Tamamlanma",
-                                value: WorkOrderPresentationMapping.formatDateTime(completedAt),
-                                systemImage: "checkmark.seal"
-                            )
-                        }
-                        SectionHeader(title: "Rapor Özeti")
-                        reportMetric("Servis Notları", content.notes.count, "note.text")
-                        reportMetric("Fotoğraflar", content.photos.count, "photo")
-                        reportMetric("GPS Kayıtları", content.locations.count, "location")
-                        reportMetric("İmzalar", content.signatures.count, "signature")
-                        if let description = content.workOrder.issueDescription {
-                            InfoRow(title: "Yapılan İşlem", value: description, systemImage: "text.alignleft")
-                        }
-                    }
+                    WorkOrderReportDetailSections(
+                        snapshot: content.reportSnapshot,
+                        mediaLoader: WorkOrderMediaLoader(storage: dependencies.storageDataSource)
+                    )
                     .padding(AppSpacing.l)
                 }
             }
         }
     }
 
-    private func reportMetric(_ title: String, _ count: Int, _ icon: String) -> some View {
-        HStack {
-            Label(title, systemImage: icon)
-            Spacer()
-            Text("\(count)").font(AppFont.caption).foregroundStyle(AppColor.secondaryText)
+    @ToolbarContentBuilder
+    private var pdfToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            if let pdfFileURL {
+                ShareLink(item: pdfFileURL) {
+                    Label("PDF Paylaş", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Button {
+                    Task { await exportPDF() }
+                } label: {
+                    if isExportingPDF {
+                        ProgressView()
+                    } else {
+                        Label("PDF", systemImage: "doc.richtext")
+                    }
+                }
+                .disabled(viewModel.content == nil || isExportingPDF)
+            }
         }
-        .padding(AppSpacing.m)
-        .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
     }
-}
 
-extension TechnicianServiceReportView {
-    init(workOrderId: WorkOrderID, dependencies: TechnicianDependencies, actor: User) {
-        self.workOrderId = workOrderId
-        _viewModel = State(initialValue: TechnicianWorkOrderDetailViewModel(
-            workOrderId: workOrderId,
-            actor: actor,
-            dependencies: dependencies
-        ))
+    private func exportPDF() async {
+        guard let content = viewModel.content, !isExportingPDF else { return }
+        isExportingPDF = true
+        defer { isExportingPDF = false }
+        let snapshot = content.reportSnapshot
+        let loader = WorkOrderMediaLoader(storage: dependencies.storageDataSource)
+        let media = await WorkOrderReportPDFExporter.collectMedia(snapshot: snapshot, loader: loader)
+        let data = WorkOrderReportPDFExporter.makePDF(snapshot: snapshot, media: media)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(snapshot.workOrder.workOrderNumber)-rapor.pdf")
+        try? data.write(to: url, options: .atomic)
+        pdfFileURL = url
     }
 }
 

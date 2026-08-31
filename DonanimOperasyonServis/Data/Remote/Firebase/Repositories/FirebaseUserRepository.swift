@@ -68,6 +68,16 @@ struct FirebaseUserRepository: UserRepository {
         }
     }
 
+    func updateSelfServiceProfile(_ user: User) async throws {
+        try await FirebaseRepositoryMapper.run(entity: "User", id: user.id.rawValue) {
+            try await dataSource.updateFields(
+                FirestoreUserSelfServicePatchDTO(domain: user),
+                collection: .users,
+                id: user.id.rawValue
+            )
+        }
+    }
+
     func delete(id: UserID) async throws {
         try await FirebaseRepositoryMapper.run(entity: "User", id: id.rawValue) {
             try await dataSource.delete(collection: .users, id: id.rawValue)

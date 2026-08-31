@@ -5,11 +5,24 @@ import Foundation
 /// later a user/network trigger).
 protocol Reconciling: Sendable {
     func reconcile(_ request: ReconciliationRequest, now: Date) async throws -> ReconciliationOutcome
+    func reconcile(
+        _ request: ReconciliationRequest,
+        prefetchedRemote: ReconciledRecord?,
+        now: Date
+    ) async throws -> ReconciliationOutcome
 }
 
 extension Reconciling {
     func reconcile(_ request: ReconciliationRequest) async throws -> ReconciliationOutcome {
         try await reconcile(request, now: Date())
+    }
+
+    func reconcile(
+        _ request: ReconciliationRequest,
+        prefetchedRemote: ReconciledRecord,
+        now: Date
+    ) async throws -> ReconciliationOutcome {
+        try await reconcile(request, prefetchedRemote: Optional(prefetchedRemote), now: now)
     }
 }
 

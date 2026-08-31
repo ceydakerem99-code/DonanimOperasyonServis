@@ -1,19 +1,14 @@
 import SwiftUI
+import UIKit
 
-/// Visual signature-capture surface.
-///
-/// Captures finger strokes as `Path` values held in local state so the
-/// component looks and feels functional in previews. No persistence,
-/// export, or upload behaviour lives here — those responsibilities
-/// belong to the Signature use cases and repositories added in Phase 8.
-///
-/// Provide an optional `title` and `subtitle` shown above the canvas.
+/// Visual signature-capture surface with optional parent-owned strokes
+/// so callers can export PNG via `SignatureImageExport`.
 struct SignatureCanvas: View {
     var title: String = "İmza"
     var subtitle: String?
+    @Binding var strokes: [[CGPoint]]
 
     @State private var currentStroke: [CGPoint] = []
-    @State private var completedStrokes: [[CGPoint]] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s) {
@@ -33,7 +28,7 @@ struct SignatureCanvas: View {
                         .foregroundStyle(AppColor.divider)
                 )
                 .overlay(alignment: .center) {
-                    if completedStrokes.isEmpty && currentStroke.isEmpty {
+                    if strokes.isEmpty && currentStroke.isEmpty {
                         Text("İmza için ekrana dokunun")
                             .font(AppFont.caption)
                             .foregroundStyle(AppColor.secondaryText)
@@ -43,7 +38,7 @@ struct SignatureCanvas: View {
             HStack {
                 Spacer()
                 Button {
-                    completedStrokes.removeAll()
+                    strokes.removeAll()
                     currentStroke.removeAll()
                 } label: {
                     Label("Temizle", systemImage: "arrow.counterclockwise")
@@ -52,7 +47,7 @@ struct SignatureCanvas: View {
                         .frame(minHeight: AppSpacing.minimumTouchTarget)
                 }
                 .buttonStyle(.plain)
-                .disabled(completedStrokes.isEmpty && currentStroke.isEmpty)
+                .disabled(strokes.isEmpty && currentStroke.isEmpty)
                 .accessibilityLabel(Text("İmzayı temizle"))
             }
         }
@@ -73,7 +68,7 @@ struct SignatureCanvas: View {
 
     private var canvas: some View {
         Canvas { context, _ in
-            for stroke in completedStrokes {
+            for stroke in strokes {
                 context.stroke(path(for: stroke), with: .color(AppColor.primaryText), lineWidth: 2)
             }
             context.stroke(path(for: currentStroke), with: .color(AppColor.primaryText), lineWidth: 2)
@@ -86,7 +81,7 @@ struct SignatureCanvas: View {
                 }
                 .onEnded { _ in
                     guard !currentStroke.isEmpty else { return }
-                    completedStrokes.append(currentStroke)
+                    strokes.append(currentStroke)
                     currentStroke.removeAll()
                 }
         )
@@ -103,13 +98,55 @@ struct SignatureCanvas: View {
     }
 }
 
+/// Renders captured strokes to PNG for `recordSignature(imageData:)`.
+enum SignatureImageExport {
+    @MainActor
+    static func pngData(
+        strokes: [[CGPoint]],
+        size: CGSize = CGSize(width: 600, height: 240)
+    ) -> Data? {
+        guard !strokes.isEmpty else { return nil }
+        let view = SignatureStrokePreview(strokes: strokes)
+            .frame(width: size.width, height: size.height)
+            .background(Color.white)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = UIScreen.main.scale
+        return renderer.uiImage?.pngData()
+    }
+}
+
+private struct SignatureStrokePreview: View {
+    let strokes: [[CGPoint]]
+
+    var body: some View {
+        Canvas { context, _ in
+            for stroke in strokes {
+                var path = Path()
+                guard let first = stroke.first else { continue }
+                path.move(to: first)
+                for point in stroke.dropFirst() {
+                    path.addLine(to: point)
+                }
+                context.stroke(path, with: .color(.black), lineWidth: 2.5)
+            }
+        }
+    }
+}
+
 #if DEBUG
 #Preview("SignatureCanvas") {
+    @Previewable @State var strokes: [[CGPoint]] = []
     VStack(spacing: AppSpacing.xl) {
-        SignatureCanvas(title: "Teknisyen İmzası",
-                        subtitle: "Ahmet Yılmaz")
-        SignatureCanvas(title: "Müşteri İmzası",
-                        subtitle: "Mehmet Kaya (ABC Market)")
+        SignatureCanvas(
+            title: "Teknisyen İmzası",
+            subtitle: "Ahmet Yılmaz",
+            strokes: $strokes
+        )
+        SignatureCanvas(
+            title: "Müşteri İmzası",
+            subtitle: "Mehmet Kaya (ABC Market)",
+            strokes: $strokes
+        )
     }
     .padding(AppSpacing.l)
     .background(AppColor.neutralBackground)

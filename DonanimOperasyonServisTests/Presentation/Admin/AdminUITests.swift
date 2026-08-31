@@ -108,6 +108,25 @@ final class AdminUserListViewModelTests: XCTestCase {
             XCTFail("technician cannot list users")
         }
     }
+
+    func testAdminUserListRefreshesRemoteUsers() async throws {
+        let container = DIContainer.mock()
+        let reachability = await container.networkReachability as! FakeNetworkReachability
+        await reachability.setReachable(true)
+
+        let admin = DomainFixtures.adminUser()
+        let mehmet = DomainFixtures.mehmetTechnician()
+        try await container.remoteUserRepository.save(admin)
+        try await container.remoteUserRepository.save(mehmet)
+
+        let deps = container.makeAdminDependencies()
+        let vm = AdminUserListViewModel(actor: admin, dependencies: deps)
+        await vm.load()
+
+        XCTAssertEqual(vm.phase, .loaded)
+        XCTAssertTrue(vm.rows.contains(where: { $0.id == DomainFixtures.mehmetTechnicianUID.rawValue }))
+        XCTAssertTrue(vm.rows.contains(where: { $0.fullName == "Mehmet Kerem" }))
+    }
 }
 
 @MainActor
@@ -262,7 +281,7 @@ final class AdminReportsViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.phase, .loaded)
-        XCTAssertEqual(vm.content?.workOrder.id, order.id)
+        XCTAssertEqual(vm.content?.snapshot.workOrder.id, order.id)
     }
 }
 

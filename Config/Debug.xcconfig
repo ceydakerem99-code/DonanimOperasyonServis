@@ -1,0 +1,4 @@
+// Debug build settings for DonanimOperasyonServis.
+// Mac LAN IP is injected at build time via Scripts/generate-realtime-gateway-host.sh.
+#include? "Generated/RealtimeGatewayHost.xcconfig"
+REALTIME_GATEWAY_PORT = 5088

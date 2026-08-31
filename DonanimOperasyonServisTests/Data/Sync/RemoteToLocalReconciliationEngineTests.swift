@@ -243,6 +243,7 @@ final class RemoteToLocalReconciliationEngineTests: XCTestCase {
             statusHistory: local.statusHistory,
             signatures: local.signatures,
             editRequests: local.editRequests,
+            customerSatisfactions: local.customerSatisfactions,
             notifications: local.notifications
         )
         let engine = RemoteToLocalReconciliationEngine(

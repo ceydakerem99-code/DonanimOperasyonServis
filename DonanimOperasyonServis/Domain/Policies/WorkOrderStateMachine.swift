@@ -23,8 +23,9 @@ enum WorkOrderStateMachine {
     /// destinations`. Kept `static` so tests can assert against the
     /// exact set without going through `canTransition`.
     static let transitionTable: [WorkOrderStatus: Set<WorkOrderStatus>] = [
-        .assigned:   [.accepted],
+        .assigned:   [.accepted, .rejected],
         .accepted:   [.enRoute],
+        .rejected:   [],
         .enRoute:    [.arrived],
         .arrived:    [.inProgress],
         .inProgress: [.paused, .completed],

@@ -6,28 +6,31 @@ struct OperatorEditRequestListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.m) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.m) {
                 filterChips
 
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Talepler yükleniyor...")
-                        .frame(minHeight: 200)
-                case .error(let message):
-                    ErrorBanner(title: "Liste yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "Talepler yükleniyor...",
+                    errorTitle: "Liste yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        ForEach(viewModel.rows) { row in
+                            editRequestCard(row)
+                        }
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "doc.text",
+                            title: "Düzenleme talebi yok",
+                            message: "Teknisyenlerden gelen talepler burada listelenecek."
+                        )
                     }
-                case .empty:
-                    EmptyState(
-                        systemImage: "doc.text",
-                        title: "Düzenleme talebi yok",
-                        message: "Teknisyenlerden gelen talepler burada listelenecek."
-                    )
-                case .loaded:
-                    ForEach(viewModel.rows) { row in
-                        editRequestCard(row)
-                    }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)

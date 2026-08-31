@@ -16,6 +16,9 @@ final class SyncPolicyTests: XCTestCase {
         XCTAssertTrue(SyncPolicy.canEnqueue(entityType: .notification, operationType: .create))
         XCTAssertTrue(SyncPolicy.canEnqueue(entityType: .notification, operationType: .update))
         XCTAssertFalse(SyncPolicy.canEnqueue(entityType: .notification, operationType: .delete))
+        XCTAssertTrue(SyncPolicy.canEnqueue(entityType: .customerSatisfaction, operationType: .create))
+        XCTAssertTrue(SyncPolicy.canEnqueue(entityType: .customerSatisfaction, operationType: .update))
+        XCTAssertFalse(SyncPolicy.canEnqueue(entityType: .customerSatisfaction, operationType: .delete))
     }
 
     func testAppendOnlyChildren() {
@@ -50,6 +53,25 @@ final class SyncPolicyTests: XCTestCase {
         )
     }
 
+    func testCompletionTransitionMayEnqueueCompletedWorkOrderUpdate() {
+        XCTAssertTrue(
+            SyncPolicy.canEnqueue(
+                entityType: .workOrder,
+                operationType: .update,
+                workOrderStatus: .completed,
+                allowsCompletedWorkOrderUpdate: true
+            )
+        )
+        XCTAssertFalse(
+            SyncPolicy.canEnqueue(
+                entityType: .workOrder,
+                operationType: .delete,
+                workOrderStatus: .completed,
+                allowsCompletedWorkOrderUpdate: true
+            )
+        )
+    }
+
     func testEditRequestRemainsThePathForCompletedFieldEdits() {
         XCTAssertTrue(SyncPolicy.canEnqueue(entityType: .editRequest, operationType: .create))
         XCTAssertFalse(
@@ -59,5 +81,17 @@ final class SyncPolicyTests: XCTestCase {
                 workOrderStatus: .completed
             )
         )
+    }
+
+    func testWorkOrderChildrenRequirePayloadReference() {
+        XCTAssertTrue(SyncPolicy.requiresWorkOrderPayloadReference(.workOrderNote))
+        XCTAssertTrue(SyncPolicy.requiresWorkOrderPayloadReference(.workOrderPhoto))
+        XCTAssertTrue(SyncPolicy.requiresWorkOrderPayloadReference(.workOrderLocation))
+        XCTAssertTrue(SyncPolicy.requiresWorkOrderPayloadReference(.workOrderStatusHistory))
+        XCTAssertTrue(SyncPolicy.requiresWorkOrderPayloadReference(.signature))
+        XCTAssertFalse(SyncPolicy.requiresWorkOrderPayloadReference(.workOrder))
+        XCTAssertFalse(SyncPolicy.requiresWorkOrderPayloadReference(.customer))
+        XCTAssertFalse(SyncPolicy.requiresWorkOrderPayloadReference(.notification))
+        XCTAssertFalse(SyncPolicy.requiresWorkOrderPayloadReference(.customerSatisfaction))
     }
 }

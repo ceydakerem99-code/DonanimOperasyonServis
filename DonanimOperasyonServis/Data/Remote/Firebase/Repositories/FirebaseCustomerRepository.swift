@@ -31,13 +31,7 @@ struct FirebaseCustomerRepository: CustomerRepository {
                 orderBy: [.ascending("name")]
             )
             let all = dtos.map { $0.toDomain() }
-            guard let raw = searchText?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased(), !raw.isEmpty
-            else {
-                return all
-            }
-            return all.filter { $0.name.lowercased().contains(raw) }
+            return CustomerSearchFilter.apply(all, searchText: searchText)
         }
     }
 

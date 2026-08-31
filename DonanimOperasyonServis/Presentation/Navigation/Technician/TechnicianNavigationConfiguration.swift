@@ -39,6 +39,12 @@ extension TechnicianTab {
 enum TechnicianDestination: Hashable, Sendable {
     case workOrderDetail(WorkOrderID)
     case serviceReport(WorkOrderID)
+    case notificationSettings
+    case changePassword
+    case customerSatisfactionSurvey(CustomerSatisfactionID)
+    #if DEBUG
+    case debugDeveloperTools
+    #endif
 }
 
 extension TechnicianDestination {
@@ -46,6 +52,12 @@ extension TechnicianDestination {
         switch self {
         case .workOrderDetail: return "İş Emri Detayı"
         case .serviceReport: return "Servis Raporu"
+        case .notificationSettings: return "Bildirim Ayarları"
+        case .changePassword: return "Şifre Değiştir"
+        case .customerSatisfactionSurvey: return "Hizmet Değerlendirme"
+        #if DEBUG
+        case .debugDeveloperTools: return "Geliştirici / Test"
+        #endif
         }
     }
 }
@@ -53,9 +65,14 @@ extension TechnicianDestination {
 typealias TechnicianAppRouter = BaseAppRouter<TechnicianTab, TechnicianDestination>
 
 enum TechnicianNavigationConfiguration {
-    static func tabItems() -> [CustomTabBarItem<TechnicianTab>] {
+    static func tabItems(showsNotificationsUnreadIndicator: Bool = false) -> [CustomTabBarItem<TechnicianTab>] {
         TechnicianTab.allCases.map {
-            CustomTabBarItem(tab: $0, title: $0.title, systemImage: $0.systemImage)
+            CustomTabBarItem(
+                tab: $0,
+                title: $0.title,
+                systemImage: $0.systemImage,
+                showsUnreadIndicator: $0 == .notifications && showsNotificationsUnreadIndicator
+            )
         }
     }
 }

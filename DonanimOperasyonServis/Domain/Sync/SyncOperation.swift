@@ -31,10 +31,24 @@ struct SyncOperation: Hashable, Sendable, Identifiable, Codable {
     var localVersion: Int
     var remoteVersion: Int
     var idempotencyKey: SyncIdempotencyKey
+    /// When set, `LocalToRemoteSyncManager` must not apply this row
+    /// until the referenced queue operation reaches `.succeeded`.
+    /// Used so a work-order `completed` update waits for its
+    /// `.completed` GPS create (Firestore rules reject location create
+    /// after the parent is already completed remotely).
+    var dependsOnOperationId: SyncOperationID?
+    /// Firebase Auth UID of the user who enqueued this mutation.
+    /// Remote apply must run under a matching Auth session.
+    var actorUserId: String?
 
     /// Builds a brand-new queue entry in `.pending`. Throws
     /// `SyncError.invalidPayload` when the identity fields are empty
     /// or `SyncPolicy` forbids the combination.
+    ///
+    /// Work-order children (`workOrderNote`, `workOrderPhoto`,
+    /// `workOrderLocation`, `workOrderStatusHistory`, `signature`)
+    /// **must** carry `payloadReference` = parent work-order id so
+    /// `SyncRemoteDispatcher` can load them from the local store.
     static func pending(
         id: SyncOperationID = SyncOperationID(UUID().uuidString),
         entityType: SyncEntityType,
@@ -45,7 +59,10 @@ struct SyncOperation: Hashable, Sendable, Identifiable, Codable {
         localVersion: Int,
         remoteVersion: Int = 0,
         workOrderStatus: WorkOrderStatus? = nil,
-        idempotencyKey: SyncIdempotencyKey? = nil
+        idempotencyKey: SyncIdempotencyKey? = nil,
+        dependsOnOperationId: SyncOperationID? = nil,
+        allowsCompletedWorkOrderUpdate: Bool = false,
+        actorUserId: String? = nil
     ) throws -> SyncOperation {
         let trimmedId = entityId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedId.isEmpty else {
@@ -54,9 +71,17 @@ struct SyncOperation: Hashable, Sendable, Identifiable, Codable {
         guard SyncPolicy.canEnqueue(
             entityType: entityType,
             operationType: operationType,
-            workOrderStatus: workOrderStatus
+            workOrderStatus: workOrderStatus,
+            allowsCompletedWorkOrderUpdate: allowsCompletedWorkOrderUpdate
         ) else {
             throw SyncError.invalidPayload
+        }
+        let trimmedPayload = payloadReference?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if SyncPolicy.requiresWorkOrderPayloadReference(entityType) {
+            guard let trimmedPayload, !trimmedPayload.isEmpty else {
+                throw SyncError.invalidPayload
+            }
         }
         let key = idempotencyKey ?? SyncIdempotencyKey.make(
             entityType: entityType,
@@ -67,12 +92,14 @@ struct SyncOperation: Hashable, Sendable, Identifiable, Codable {
         guard !key.rawValue.isEmpty else {
             throw SyncError.invalidPayload
         }
+        let trimmedActor = actorUserId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return SyncOperation(
             id: id,
             entityType: entityType,
             entityId: trimmedId,
             operationType: operationType,
-            payloadReference: payloadReference,
+            payloadReference: trimmedPayload?.isEmpty == false ? trimmedPayload : nil,
             createdAt: createdAt,
             updatedAt: createdAt,
             retryCount: 0,
@@ -82,7 +109,9 @@ struct SyncOperation: Hashable, Sendable, Identifiable, Codable {
             errorMessage: nil,
             localVersion: localVersion,
             remoteVersion: remoteVersion,
-            idempotencyKey: key
+            idempotencyKey: key,
+            dependsOnOperationId: dependsOnOperationId,
+            actorUserId: trimmedActor?.isEmpty == false ? trimmedActor : nil
         )
     }
 }

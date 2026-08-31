@@ -6,30 +6,33 @@ struct TechnicianWorkOrderListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.m) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.m) {
                 searchField
                 filterChips
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "İş emirleri yükleniyor...")
-                        .frame(minHeight: 220)
-                case .error(let message):
-                    ErrorBanner(title: "Liste yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
-                    }
-                case .empty:
-                    EmptyState(
-                        systemImage: "doc.text.magnifyingglass",
-                        title: "Atanmış iş emri yok",
-                        message: "Size atanan işler burada listelenecek."
-                    )
-                case .loaded:
-                    ForEach(viewModel.cards) { card in
-                        WorkOrderCard(data: card) {
-                            onSelectWorkOrder(WorkOrderID(card.id))
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "İş emirleri yükleniyor...",
+                    errorTitle: "Liste yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        ForEach(viewModel.cards) { card in
+                            WorkOrderCard(data: card) {
+                                onSelectWorkOrder(WorkOrderID(card.id))
+                            }
                         }
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "doc.text.magnifyingglass",
+                            title: "Atanmış iş emri yok",
+                            message: "Size atanan işler burada listelenecek."
+                        )
                     }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
@@ -38,7 +41,16 @@ struct TechnicianWorkOrderListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
-        .onChange(of: viewModel.searchText) { _, _ in Task { await viewModel.load() } }
+        .onAppear {
+            // The first local read can legitimately be empty while the
+            // assigned-work-order directory is still being hydrated.
+            // Always request the refresh on first appearance; the refresh
+            // gate coalesces this with `.task` and foreground refreshes.
+            Task { await viewModel.refreshFromRemoteDirectory() }
+        }
+        .onChange(of: viewModel.searchText) { _, _ in
+            Task { await viewModel.applyLocalSearch() }
+        }
     }
 
     private var searchField: some View {

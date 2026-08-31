@@ -18,4 +18,11 @@ enum SyncDrainOutcome: Hashable, Sendable {
         case .deferredOffline:  return "Çevrimdışı, senkronizasyon ertelendi"
         }
     }
+
+    var logLabel: String {
+        switch self {
+        case .completed: return "completed"
+        case .deferredOffline: return "deferredOffline"
+        }
+    }
 }

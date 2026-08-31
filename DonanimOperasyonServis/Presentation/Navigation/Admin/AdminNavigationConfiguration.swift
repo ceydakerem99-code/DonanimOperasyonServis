@@ -43,6 +43,7 @@ extension AdminTab {
 
 /// Stack destinations reachable from Admin tabs.
 enum AdminDestination: Hashable, Sendable {
+    case createUser
     case userDetail(UserID)
     case roleDetail(UserRole)
     case workTypes
@@ -55,6 +56,7 @@ enum AdminDestination: Hashable, Sendable {
 extension AdminDestination {
     var title: String {
         switch self {
+        case .createUser: return "Yeni Kullanıcı"
         case .userDetail: return "Kullanıcı Detayı"
         case .roleDetail: return "Rol Detayı"
         case .workTypes: return "İş Türleri Yönetimi"

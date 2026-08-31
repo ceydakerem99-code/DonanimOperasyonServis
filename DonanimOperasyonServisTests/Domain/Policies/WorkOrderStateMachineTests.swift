@@ -8,6 +8,7 @@ final class WorkOrderStateMachineTests: XCTestCase {
     func testAllValidTransitionsSucceed() throws {
         let validPairs: [(WorkOrderStatus, WorkOrderStatus)] = [
             (.assigned,   .accepted),
+            (.assigned,   .rejected),
             (.accepted,   .enRoute),
             (.enRoute,    .arrived),
             (.arrived,    .inProgress),
@@ -26,13 +27,21 @@ final class WorkOrderStateMachineTests: XCTestCase {
     }
 
     func testAllowedTransitionsTableMatchesExpectation() {
-        XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .assigned),   [.accepted])
+        XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .assigned),   [.accepted, .rejected])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .accepted),   [.enRoute])
+        XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .rejected),   [])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .enRoute),    [.arrived])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .arrived),    [.inProgress])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .inProgress), [.paused, .completed])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .paused),     [.inProgress])
         XCTAssertEqual(WorkOrderStateMachine.allowedTransitions(from: .completed),  [])
+    }
+
+    func testAssignedCanRejectAndRejectedIsTerminal() throws {
+        let result = try WorkOrderStateMachine.transition(from: .assigned, to: .rejected)
+        XCTAssertEqual(result, .rejected)
+        XCTAssertTrue(WorkOrderStatus.rejected.isTerminal)
+        XCTAssertTrue(WorkOrderStateMachine.allowedTransitions(from: .rejected).isEmpty)
     }
 
     // MARK: - Invalid transitions

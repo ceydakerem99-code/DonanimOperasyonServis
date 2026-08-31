@@ -22,6 +22,11 @@ protocol UserRepository: Sendable {
     /// semantics based on the entity's `id`.
     func save(_ user: User) async throws
 
+    /// Self-service profile patch: only `notificationPreferences`
+    /// and `updatedAt`. Remote Firestore rules reject full-document
+    /// writes for technicians updating their own profile.
+    func updateSelfServiceProfile(_ user: User) async throws
+
     /// Removes the user permanently. In v1 this is admin-only —
     /// authorization is enforced at the use-case layer, not here.
     func delete(id: UserID) async throws

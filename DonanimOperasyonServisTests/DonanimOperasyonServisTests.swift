@@ -3,9 +3,25 @@ import XCTest
 
 final class DonanimOperasyonServisTests: XCTestCase {
 
-    func testDIContainerLiveFailsFastWhenFirebaseIsUnconfigured() {
-        XCTAssertThrowsError(try DIContainer.live()) { error in
-            XCTAssertEqual(error as? FirebaseError, .notConfigured)
+    /// With a bundled `GoogleService-Info.plist`, `live()` must wire real
+    /// Firebase data sources. Without one it must fail fast (`notConfigured`)
+    /// and never fall back to Fake* in the live path.
+    func testDIContainerLiveRespectsFirebaseConfiguration() throws {
+        let outcome = FirebaseAppBootstrapper.configure()
+        switch outcome {
+        case .configured, .alreadyConfigured:
+            let container = try DIContainer.live()
+            XCTAssertTrue(
+                container.firebaseBootstrapOutcome == .configured
+                    || container.firebaseBootstrapOutcome == .alreadyConfigured
+            )
+            XCTAssertTrue(container.firestoreDataSource is LiveFirestoreDataSource)
+            XCTAssertTrue(container.firebaseStorageDataSource is LiveFirebaseStorageDataSource)
+            XCTAssertFalse(container.firestoreDataSource is FakeFirestoreDataSource)
+        case .skippedNoConfig, .skippedInvalidConfig:
+            XCTAssertThrowsError(try DIContainer.live()) { error in
+                XCTAssertEqual(error as? FirebaseError, .notConfigured)
+            }
         }
     }
 
@@ -34,6 +50,7 @@ final class DonanimOperasyonServisTests: XCTestCase {
         XCTAssertNotNil(container.workOrderStatusHistoryRepository)
         XCTAssertNotNil(container.signatureRepository)
         XCTAssertNotNil(container.editRequestRepository)
+        XCTAssertNotNil(container.customerSatisfactionRepository)
         XCTAssertNotNil(container.notificationRepository)
         XCTAssertNotNil(container.syncOperationRepository)
         XCTAssertNotNil(container.syncConflictRepository)
@@ -57,6 +74,7 @@ final class DonanimOperasyonServisTests: XCTestCase {
         XCTAssertNotNil(container.remoteWorkOrderStatusHistoryRepository)
         XCTAssertNotNil(container.remoteSignatureRepository)
         XCTAssertNotNil(container.remoteEditRequestRepository)
+        XCTAssertNotNil(container.remoteCustomerSatisfactionRepository)
         XCTAssertNotNil(container.remoteNotificationRepository)
         XCTAssertNotNil(container.firestoreDataSource)
         XCTAssertNotNil(container.firebaseStorageDataSource)

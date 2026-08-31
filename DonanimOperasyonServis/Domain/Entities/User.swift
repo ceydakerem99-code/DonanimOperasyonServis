@@ -10,6 +10,8 @@ struct User: Hashable, Sendable, Identifiable, Codable {
     var role: UserRole
     var phoneNumber: PhoneNumber?
     var isActive: Bool
+    /// Inbox / banner display preferences. Missing keys default to on.
+    var notificationPreferences: NotificationPreferences
     var createdAt: Date
     var updatedAt: Date
 
@@ -20,6 +22,7 @@ struct User: Hashable, Sendable, Identifiable, Codable {
         role: UserRole,
         phoneNumber: PhoneNumber? = nil,
         isActive: Bool = true,
+        notificationPreferences: NotificationPreferences = .default,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -29,6 +32,7 @@ struct User: Hashable, Sendable, Identifiable, Codable {
         self.role = role
         self.phoneNumber = phoneNumber
         self.isActive = isActive
+        self.notificationPreferences = notificationPreferences
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

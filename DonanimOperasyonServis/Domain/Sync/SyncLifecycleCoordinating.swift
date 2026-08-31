@@ -9,6 +9,8 @@ protocol SyncLifecycleCoordinating: Sendable {
     func handleBecomeActive(now: Date) async
     func handleNetworkBecameReachable(now: Date) async
     func handleBackgroundTask(_ task: any BackgroundSyncTaskHandle, now: Date) async
+    /// Recomputes header badge counts from the live queue without a drain.
+    func refreshProgressSnapshot() async
 }
 
 extension SyncLifecycleCoordinating {

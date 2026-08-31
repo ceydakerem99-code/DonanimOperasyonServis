@@ -3,16 +3,25 @@ import SwiftUI
 struct TechnicianAppShellView: View {
     let user: User
     let dependencies: TechnicianDependencies
+    var syncProgressStore: SyncProgressStore?
     let onLogout: () -> Void
+    @Environment(\.diContainer) private var container
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var router = TechnicianAppRouter(selectedTab: .home)
     @State private var homeViewModel: TechnicianHomeViewModel
     @State private var workOrderListViewModel: TechnicianWorkOrderListViewModel
     @State private var notificationListViewModel: TechnicianNotificationListViewModel
 
-    init(user: User, dependencies: TechnicianDependencies, onLogout: @escaping () -> Void) {
+    init(
+        user: User,
+        dependencies: TechnicianDependencies,
+        syncProgressStore: SyncProgressStore? = nil,
+        onLogout: @escaping () -> Void
+    ) {
         self.user = user
         self.dependencies = dependencies
+        self.syncProgressStore = syncProgressStore
         self.onLogout = onLogout
         _homeViewModel = State(initialValue: TechnicianHomeViewModel(actor: user, dependencies: dependencies))
         _workOrderListViewModel = State(initialValue: TechnicianWorkOrderListViewModel(actor: user, dependencies: dependencies))
@@ -23,9 +32,12 @@ struct TechnicianAppShellView: View {
         AppShellLayout(
             headerTitle: UserRole.technician.displayName,
             userName: user.fullName,
-            tabs: TechnicianNavigationConfiguration.tabItems(),
+            tabs: TechnicianNavigationConfiguration.tabItems(
+                showsNotificationsUnreadIndicator: notificationListViewModel.unreadCount > 0
+            ),
             selectedTab: $router.selectedTab,
             path: $router.path,
+            syncProgressStore: syncProgressStore ?? container.syncProgressStore,
             root: { tab in
                 technicianRoot(for: tab)
             },
@@ -34,7 +46,26 @@ struct TechnicianAppShellView: View {
             }
         )
         .onChange(of: router.selectedTab) { _, _ in
-            router.popToRoot()
+            guard !router.path.isEmpty else { return }
+            Task { @MainActor in
+                router.popToRoot()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await homeViewModel.refreshFromRemoteDirectory()
+                await workOrderListViewModel.refreshFromRemoteDirectory()
+                await notificationListViewModel.refreshFromRemoteDirectory()
+            }
+        }
+        .onChange(of: syncProgressStore?.isSyncing) { wasSyncing, isSyncing in
+            guard wasSyncing == true, isSyncing == false else { return }
+            Task {
+                await homeViewModel.refreshFromRemoteDirectory()
+                await workOrderListViewModel.refreshFromRemoteDirectory()
+                await notificationListViewModel.refreshFromRemoteDirectory()
+            }
         }
     }
 
@@ -53,10 +84,34 @@ struct TechnicianAppShellView: View {
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) }
             )
         case .notifications:
-            TechnicianNotificationListView(viewModel: notificationListViewModel)
+            TechnicianNotificationListView(
+                viewModel: notificationListViewModel,
+                onOpenWorkOrder: { router.push(.workOrderDetail($0)) }
+            )
         case .profile:
-            TechnicianProfileView(user: user, onLogout: onLogout)
+            technicianProfileView()
         }
+    }
+
+    private func technicianProfileView() -> some View {
+        #if DEBUG
+        TechnicianProfileView(
+            user: user,
+            accountService: dependencies.profileAccountService,
+            onShowNotificationSettings: { router.push(.notificationSettings) },
+            onShowChangePassword: { router.push(.changePassword) },
+            onShowDebugTools: { router.push(.debugDeveloperTools) },
+            onLogout: onLogout
+        )
+        #else
+        TechnicianProfileView(
+            user: user,
+            accountService: dependencies.profileAccountService,
+            onShowNotificationSettings: { router.push(.notificationSettings) },
+            onShowChangePassword: { router.push(.changePassword) },
+            onLogout: onLogout
+        )
+        #endif
     }
 
     @ViewBuilder
@@ -67,7 +122,14 @@ struct TechnicianAppShellView: View {
                 viewModel: TechnicianWorkOrderDetailViewModel(
                     workOrderId: id,
                     actor: user,
-                    dependencies: dependencies
+                    dependencies: dependencies,
+                    locationSampler: {
+                        #if DEBUG
+                        DebugLocationSettings.makeSampler()
+                        #else
+                        CoreLocationSampler()
+                        #endif
+                    }()
                 ),
                 onShowReport: { router.push(.serviceReport($0)) }
             )
@@ -77,6 +139,31 @@ struct TechnicianAppShellView: View {
                 dependencies: dependencies,
                 actor: user
             )
+
+        case .notificationSettings:
+            NotificationSettingsView(
+                viewModel: NotificationSettingsViewModel(
+                    actor: user,
+                    accountService: dependencies.profileAccountService
+                )
+            )
+
+        case .changePassword:
+            ChangePasswordView(
+                viewModel: ChangePasswordViewModel(
+                    accountService: dependencies.profileAccountService
+                )
+            )
+
+        case .customerSatisfactionSurvey(let id):
+            CustomerSatisfactionFormView(satisfactionId: id)
+
+        #if DEBUG
+        case .debugDeveloperTools:
+            DebugDeveloperToolsView(
+                onOpenCustomerSatisfactionSurvey: { router.push(.customerSatisfactionSurvey($0)) }
+            )
+        #endif
         }
     }
 }

@@ -1,0 +1,50 @@
+import Foundation
+
+enum WorkOrderTemplateDefaults {
+    static func templates(for userId: UserID, at now: Date) -> [WorkOrderTemplate] {
+        [
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-pos-maintenance"),
+                name: "POS Bakım",
+                summary: "Periyodik POS bakım işleri",
+                workType: .maintenance,
+                deviceCategory: .pos,
+                deviceBrand: "Ingenico",
+                deviceModel: "Move 5000",
+                issueDescription: "Periyodik bakım ve kontrol",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-pos-installation"),
+                name: "POS Kurulum",
+                summary: "Yeni POS cihaz kurulumu",
+                workType: .installation,
+                deviceCategory: .pos,
+                deviceBrand: "Ingenico",
+                deviceModel: "Desk 5000",
+                issueDescription: "Yeni kurulum ve aktivasyon",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-pos-repair"),
+                name: "POS Arıza",
+                summary: "Acil POS arıza müdahalesi",
+                workType: .repair,
+                deviceCategory: .pos,
+                deviceBrand: "Ingenico",
+                deviceModel: "Move 5000",
+                issueDescription: "Arıza bildirimi ve müdahale",
+                priority: .urgent,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+    }
+}

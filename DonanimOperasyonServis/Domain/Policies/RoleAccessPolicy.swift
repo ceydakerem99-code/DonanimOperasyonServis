@@ -31,7 +31,9 @@ enum RoleAccessPolicy {
             .manageUsers,
             .viewRolesMatrix,
             .manageSystemConfiguration,
-            .viewSystemReports
+            .viewSystemReports,
+            .viewServiceReport,
+            .deleteWorkOrder
             // NOTE: admin intentionally CANNOT approve or reject
             // edit requests, and CANNOT execute field work.
         ],
@@ -39,16 +41,20 @@ enum RoleAccessPolicy {
         .operator: [
             .createWorkOrder,
             .createCustomer,
+            .updateCustomer,
             .assignWorkOrder,
             .viewAllWorkOrders,
             .viewServiceReport,
+            .viewSystemReports,
             .approveEditRequest,
             .rejectEditRequest,
-            .resolveSyncConflict
+            .resolveSyncConflict,
+            .createCustomerSatisfaction
         ],
 
         .technician: [
             .viewOwnAssignedWorkOrders,
+            .viewServiceReport,
             .acceptWorkOrder,
             .startTravelToCustomer,
             .markArrivedAtCustomer,
@@ -107,6 +113,15 @@ enum RoleAccessPolicy {
     static func canReviewEditRequest(_ request: EditRequest, as user: User) -> Bool {
         guard user.role == .operator else { return false }
         guard request.requestedByUserId != user.id else { return false }
+        return true
+    }
+
+    /// Whether `user` may open a pending `CustomerSatisfaction`
+    /// survey for `workOrder`. Only operators may create surveys for
+    /// **completed** work orders.
+    static func canCreateCustomerSatisfaction(on workOrder: WorkOrder, as user: User) -> Bool {
+        guard user.role == .operator else { return false }
+        guard workOrder.isLocked else { return false }
         return true
     }
 }

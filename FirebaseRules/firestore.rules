@@ -1,95 +1,408 @@
 rules_version = '2';
 
 // =============================================================================
-// Firestore Security Rules — v1 skeleton (Phase 4)
+// Firestore Security Rules — v1 (Faz 13C)
 // =============================================================================
 //
-// STATUS: NOT production-ready. Authentication is implemented in Phase 6.
-// Until then these rules default to "deny all" for clients and document the
-// intended v1 access model as TODOs.
+// Mirrors Domain/RoleAccessPolicy + FirestoreCollection.
+// User.id == Firebase Auth UID == users/{uid} document id.
+// Role is read from users/{request.auth.uid}.role (admin|operator|technician).
+// SyncOperation / SyncConflict are local-only — no collections here.
 //
-// Design principles for v1 (to be enforced once Firebase Auth lands):
-//
-//   1. Every request MUST have request.auth != null. Unauthenticated
-//      reads and writes are denied by default.
-//   2. Role is stored on /users/{uid} and is NOT client-writable.
-//      Admin/operator/technician permissions come from that document,
-//      mirroring Domain/RoleAccessPolicy.
-//   3. Technicians may only read/write work orders assigned to them
-//      (resource.data.assignedTechnicianId == request.auth.uid) and
-//      child records whose workOrderId points at such an order.
-//   4. Operators may read/write operational collections (work orders,
-//      customers, edit requests). They cannot manage users.
-//   5. Admins may manage /users but are not an operational actor —
-//      they do not approve EditRequests (see RoleAccessPolicy).
-//   6. Completed work orders are locked at the Domain layer; rules
-//      should additionally reject status transitions out of
-//      "completed" as defence in depth (Phase 6).
-//
-// Collection names MUST stay in sync with
-// `FirestoreCollection` (DonanimOperasyonServis/Data/Remote/Firebase/Config).
+// NOT deployed by this phase; deploy manually when Auth + seed users are ready.
 // =============================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny. Any collection not listed below is unreachable
-    // from client SDKs.
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(uid());
+    }
+
+    function userExists() {
+      return isSignedIn() && exists(userPath());
+    }
+
+    function callerRole() {
+      return get(userPath()).data.role;
+    }
+
+    function isAdmin() {
+      return userExists() && callerRole() == 'admin';
+    }
+
+    function isOperator() {
+      return userExists() && callerRole() == 'operator';
+    }
+
+    function isTechnician() {
+      return userExists() && callerRole() == 'technician';
+    }
+
+    function workOrderPath(workOrderId) {
+      return /databases/$(database)/documents/workOrders/$(workOrderId);
+    }
+
+    function workOrderExists(workOrderId) {
+      return exists(workOrderPath(workOrderId));
+    }
+
+    function workOrderData(workOrderId) {
+      return get(workOrderPath(workOrderId)).data;
+    }
+
+    function isAssignedTechnician(workOrderId) {
+      return workOrderExists(workOrderId)
+        && workOrderData(workOrderId).assignedTechnicianId == uid();
+    }
+
+    function workOrderIsCompleted(workOrderId) {
+      return workOrderExists(workOrderId)
+        && workOrderData(workOrderId).status == 'completed';
+    }
+
+    /// Operator / admin may read any work order; technician only if assigned.
+    function canReadWorkOrder(workOrderId) {
+      return isOperator()
+        || isAdmin()
+        || (isTechnician() && isAssignedTechnician(workOrderId));
+    }
+
+    /// Technician field-work write: assigned + not locked (RoleAccessPolicy.canAct).
+    function canTechnicianActOnWorkOrder(workOrderId) {
+      return isTechnician()
+        && isAssignedTechnician(workOrderId)
+        && !workOrderIsCompleted(workOrderId);
+    }
+
+    /// Completed status is immutable (never reopen via client write).
+    function completedStatusPreserved() {
+      return resource.data.status != 'completed'
+        || request.resource.data.status == 'completed';
+    }
+
+    /// ApproveEditRequestUseCase / EditableWorkOrderField whitelist + updatedAt.
+    /// Operator may not change assignment, status, ids, or other locked fields
+    /// on a completed work order.
+    function onlyEditableFieldsChangedOnCompletedWorkOrder() {
+      return resource.data.status == 'completed'
+        && request.resource.data.status == 'completed'
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'issueDescription',
+              'deviceBrand',
+              'deviceModel',
+              'serialNumber',
+              'scheduledDate',
+              'priority',
+              'updatedAt'
+            ]);
+    }
+
+    function canOperatorUpdateWorkOrder() {
+      return isOperator()
+        && completedStatusPreserved()
+        && (
+          resource.data.status != 'completed'
+          || onlyEditableFieldsChangedOnCompletedWorkOrder()
+        );
+    }
+
+    /// Child create/update by technician on an unlocked assigned order.
+    function canTechnicianWriteChild(workOrderId) {
+      return canTechnicianActOnWorkOrder(workOrderId);
+    }
+
+    /// Status-history append: allow the completing transition after the WO
+    /// document is already `completed` on the server (local save order).
+    function canTechnicianCreateStatusHistory(workOrderId) {
+      return isTechnician()
+        && isAssignedTechnician(workOrderId)
+        && (
+          !workOrderIsCompleted(workOrderId)
+          || request.resource.data.toStatus == 'completed'
+        );
+    }
+
+    /// OperatorWorkOrderService.createWithSync initial history only:
+    /// fromStatus absent/null → toStatus assigned, actor is the operator,
+    /// parent WO was created by that operator.
+    function canOperatorCreateInitialStatusHistory(workOrderId) {
+      return isOperator()
+        && request.resource.data.actorUserId == uid()
+        && workOrderExists(workOrderId)
+        && workOrderData(workOrderId).createdByUserId == uid()
+        && request.resource.data.toStatus == 'assigned'
+        && (
+          !('fromStatus' in request.resource.data)
+          || request.resource.data.fromStatus == null
+        )
+        && (
+          !('pauseReason' in request.resource.data)
+          || request.resource.data.pauseReason == null
+        );
+    }
+
+    function canCreateStatusHistory(workOrderId) {
+      return (
+          canTechnicianCreateStatusHistory(workOrderId)
+          && request.resource.data.actorUserId == uid()
+        )
+        || canOperatorCreateInitialStatusHistory(workOrderId);
+    }
+
+    /// Operator may only stamp review outcome fields (Approve/RejectEditRequest).
+    function onlyEditRequestReviewFieldsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'status',
+          'reviewedByUserId',
+          'reviewedAt',
+          'decisionNote'
+        ]);
+    }
+
+    /// Firestore assignment notification create (OperatorWorkOrderService).
+    function recipientMatchesWorkOrderAssignment(workOrderId, recipientUserId) {
+      return workOrderExists(workOrderId)
+        && workOrderData(workOrderId).assignedTechnicianId == recipientUserId;
+    }
+
+    function canOperatorCreateWorkOrderAssignedNotification(notificationId) {
+      let data = request.resource.data;
+      return isOperator()
+        && data.id == notificationId
+        && data.type == 'workOrderAssigned'
+        && data.isRead == false
+        && data.recipientUserId is string
+        && data.recipientUserId.size() > 0
+        && data.relatedWorkOrderId is string
+        && data.relatedWorkOrderId.size() > 0
+        && recipientMatchesWorkOrderAssignment(
+             data.relatedWorkOrderId,
+             data.recipientUserId
+           );
+    }
+
+    function canTechnicianCreateEditRequestNotification(notificationId) {
+      let data = request.resource.data;
+      return isTechnician()
+        && data.id == notificationId
+        && data.type == 'editRequestCreated'
+        && data.isRead == false
+        && data.recipientUserId is string
+        && data.recipientUserId.size() > 0
+        && data.relatedEditRequestId is string
+        && data.relatedEditRequestId.size() > 0
+        && data.relatedWorkOrderId is string
+        && data.relatedWorkOrderId.size() > 0
+        && exists(/databases/$(database)/documents/editRequests/$(data.relatedEditRequestId))
+        && get(/databases/$(database)/documents/editRequests/$(data.relatedEditRequestId)).data.requestedByUserId == uid()
+        && workOrderExists(data.relatedWorkOrderId)
+        && workOrderData(data.relatedWorkOrderId).createdByUserId == data.recipientUserId;
+    }
+
+    // Default deny — unlisted collections / unmatched ops stay closed.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // ----- users -------------------------------------------------------------
-    // TODO(Phase 6): allow read if signed in; allow write only for
-    // admin (or for a user updating their own non-role fields).
-    match /users/{userId} {
-      allow read, write: if false;
-    }
+    // -------------------------------------------------------------------------
 
-    // ----- customers ---------------------------------------------------------
-    // TODO(Phase 6): operator + admin read/write; technician read of
-    // customers attached to their assigned work orders.
+// -------------------------------------------------------------------------
+// users
+// -------------------------------------------------------------------------
+   match /users/{userId} {
+  allow read: if isSignedIn();
+
+  // TEMP bootstrap: first admin may self-create once (email/UID allowlist).
+  // Remove after production seeding is complete.
+  allow create: if isSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data.id == userId
+    && request.resource.data.role == "admin"
+    && (
+      userId == "idpKED07DNXjcsiuJ1pTC8bk9EuJv2"
+      || userId == "4vioyXm2XqcsWBW7NUD0Bbxii2z1"
+      || request.resource.data.email == "adminpanel@dops.com"
+    );
+
+  // Admin provisions other users (Auth UID == document id).
+  allow create: if isAdmin()
+    && request.resource.data.id == userId
+    && request.resource.data.role in ["admin", "operator", "technician"]
+    && request.resource.data.keys().hasAll([
+      "id", "email", "fullName", "role", "isActive", "createdAt", "updatedAt"
+    ]);
+
+  allow delete: if isAdmin();
+
+  // Self-service: only notification preference map + updatedAt.
+  allow update: if isSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['notificationPreferences', 'updatedAt']);
+
+  allow update: if isAdmin()
+    && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly([
+          'id', 'email', 'fullName', 'role', 'phoneNumber',
+          'isActive', 'notificationPreferences', 'createdAt', 'updatedAt'
+        ]);
+}
+
+    // -------------------------------------------------------------------------
+    // customers
+    // -------------------------------------------------------------------------
     match /customers/{customerId} {
-      allow read, write: if false;
+      allow get: if isOperator() || isAdmin() || isTechnician();
+
+      allow list: if isOperator() || isAdmin();
+
+      allow create, update, delete: if isOperator();
     }
 
-    // ----- workOrders --------------------------------------------------------
-    // TODO(Phase 6):
-    //   - operator: list + write
-    //   - technician: read/write iff assignedTechnicianId == auth.uid
-    //   - reject status changes out of "completed"
+    // -------------------------------------------------------------------------
+    // workOrders
+    // -------------------------------------------------------------------------
     match /workOrders/{workOrderId} {
-      allow read, write: if false;
+      allow get: if canReadWorkOrder(workOrderId);
+
+      allow list: if isOperator()
+        || isAdmin()
+        || (isTechnician()
+            && resource.data.assignedTechnicianId == uid());
+
+      allow create: if isOperator();
+
+      allow update: if canOperatorUpdateWorkOrder()
+        || (
+          isTechnician()
+          && resource.data.assignedTechnicianId == uid()
+          && resource.data.status != 'completed'
+          && request.resource.data.assignedTechnicianId
+               == resource.data.assignedTechnicianId
+          && completedStatusPreserved()
+        );
+
+      allow delete: if (isOperator() || isAdmin())
+        && resource.data.status != 'completed';
     }
 
-    // ----- child collections (flat, keyed by workOrderId) --------------------
-    // TODO(Phase 6): same visibility as the parent work order.
+    // -------------------------------------------------------------------------
+    // Child collections (flat; scoped by workOrderId)
+    // -------------------------------------------------------------------------
+
     match /workOrderNotes/{noteId} {
-      allow read, write: if false;
-    }
-    match /workOrderStatusHistory/{historyId} {
-      allow read, write: if false;
-    }
-    match /workOrderPhotos/{photoId} {
-      allow read, write: if false;
-    }
-    match /workOrderLocations/{locationId} {
-      allow read, write: if false;
-    }
-    match /signatures/{signatureId} {
-      allow read, write: if false;
-    }
-    match /editRequests/{editRequestId} {
-      // TODO(Phase 6): technician create on own completed orders;
-      // operator approve/reject; admin denied (RoleAccessPolicy).
-      allow read, write: if false;
+      allow read: if canReadWorkOrder(resource.data.workOrderId);
+
+      allow create: if canTechnicianWriteChild(request.resource.data.workOrderId)
+        && request.resource.data.authorUserId == uid();
+
+      allow update, delete: if canTechnicianWriteChild(resource.data.workOrderId);
     }
 
-    // ----- notifications -----------------------------------------------------
-    // TODO(Phase 6): recipient can read/mark-as-read their own rows.
-    // Creates are performed by Cloud Functions / trusted server.
+    match /workOrderStatusHistory/{historyId} {
+      allow read: if canReadWorkOrder(resource.data.workOrderId);
+
+      allow create: if canCreateStatusHistory(request.resource.data.workOrderId);
+
+      allow update, delete: if false;
+    }
+
+    match /workOrderPhotos/{photoId} {
+      allow read: if canReadWorkOrder(resource.data.workOrderId);
+
+      allow create: if canTechnicianWriteChild(request.resource.data.workOrderId)
+        && request.resource.data.capturedByUserId == uid();
+
+      // Update retained for deferred Storage path resolution (pending → remote).
+      allow update, delete: if canTechnicianWriteChild(resource.data.workOrderId);
+    }
+
+    match /workOrderLocations/{locationId} {
+      allow read: if canReadWorkOrder(resource.data.workOrderId);
+
+      allow create: if canTechnicianWriteChild(request.resource.data.workOrderId)
+        && request.resource.data.capturedByUserId == uid();
+
+      allow update, delete: if false;
+    }
+
+    match /signatures/{signatureId} {
+      allow read: if canReadWorkOrder(resource.data.workOrderId);
+
+      allow create: if canTechnicianWriteChild(request.resource.data.workOrderId)
+        && request.resource.data.capturedByUserId == uid();
+
+      // Update retained for deferred Storage path resolution (pending → remote).
+      allow update, delete: if canTechnicianWriteChild(resource.data.workOrderId);
+    }
+
+    // -------------------------------------------------------------------------
+    // editRequests
+    // -------------------------------------------------------------------------
+    match /editRequests/{editRequestId} {
+      allow read: if isOperator()
+        || isAdmin()
+        || (isTechnician()
+            && resource.data.requestedByUserId == uid());
+
+      allow create: if isTechnician()
+        && request.resource.data.requestedByUserId == uid()
+        && isAssignedTechnician(request.resource.data.workOrderId)
+        && workOrderIsCompleted(request.resource.data.workOrderId);
+
+      allow update: if isOperator()
+        && resource.data.requestedByUserId != uid()
+        && onlyEditRequestReviewFieldsChanged()
+        && (
+          request.resource.data.reviewedByUserId == null
+          || request.resource.data.reviewedByUserId == uid()
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // notifications
+    // -------------------------------------------------------------------------
     match /notifications/{notificationId} {
-      allow read, write: if false;
+      allow read: if isSignedIn()
+        && resource.data.recipientUserId == uid();
+
+      allow update: if isSignedIn()
+        && resource.data.recipientUserId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isRead']);
+
+      /// Operator assignment notifications: recipient must match assigned technician.
+      allow create: if canOperatorCreateWorkOrderAssignedNotification(notificationId)
+        || canTechnicianCreateEditRequestNotification(notificationId);
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // customerSatisfactions
+    // Web survey submission uses Admin SDK (server-side) and bypasses rules.
+    // Clients remain staff-authenticated only; anonymous customers cannot write.
+    // -------------------------------------------------------------------------
+    match /customerSatisfactions/{satisfactionId} {
+      allow read: if isOperator() || isAdmin() || isTechnician();
+      allow create, update, delete: if isOperator() || isAdmin() || isTechnician();
     }
   }
 }

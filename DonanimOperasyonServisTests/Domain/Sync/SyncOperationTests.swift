@@ -37,6 +37,7 @@ final class SyncOperationTests: XCTestCase {
             entityType: .workOrderNote,
             entityId: "n-1",
             operationType: .delete,
+            payloadReference: "wo-1",
             createdAt: now,
             localVersion: 3
         )
@@ -115,5 +116,59 @@ final class SyncOperationTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? SyncError, .invalidPayload)
         }
+    }
+
+    func testCompletionTransitionUpdateCanBeEnqueuedWithDependency() throws {
+        let dependencyId = SyncOperationID("gps-create-op")
+        let op = try SyncOperation.pending(
+            entityType: .workOrder,
+            entityId: "wo-1",
+            operationType: .update,
+            createdAt: now,
+            localVersion: 2,
+            workOrderStatus: .completed,
+            dependsOnOperationId: dependencyId,
+            allowsCompletedWorkOrderUpdate: true
+        )
+        XCTAssertEqual(op.dependsOnOperationId, dependencyId)
+        XCTAssertEqual(op.status, .pending)
+    }
+
+    func testWorkOrderChildRequiresPayloadReference() {
+        XCTAssertThrowsError(
+            try SyncOperation.pending(
+                entityType: .workOrderNote,
+                entityId: "n-1",
+                operationType: .create,
+                createdAt: now,
+                localVersion: 1
+            )
+        ) { error in
+            XCTAssertEqual(error as? SyncError, .invalidPayload)
+        }
+        XCTAssertThrowsError(
+            try SyncOperation.pending(
+                entityType: .signature,
+                entityId: "s-1",
+                operationType: .create,
+                payloadReference: "   ",
+                createdAt: now,
+                localVersion: 1
+            )
+        ) { error in
+            XCTAssertEqual(error as? SyncError, .invalidPayload)
+        }
+    }
+
+    func testWorkOrderChildAcceptsParentPayloadReference() throws {
+        let op = try SyncOperation.pending(
+            entityType: .workOrderPhoto,
+            entityId: "p-1",
+            operationType: .create,
+            payloadReference: "wo-42",
+            createdAt: now,
+            localVersion: 1
+        )
+        XCTAssertEqual(op.payloadReference, "wo-42")
     }
 }

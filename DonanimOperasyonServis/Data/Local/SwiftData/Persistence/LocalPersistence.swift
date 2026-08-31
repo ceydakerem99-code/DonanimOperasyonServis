@@ -79,7 +79,7 @@ actor LocalPersistence {
             return all.map { $0.toDomain() }
         }
         return all
-            .filter { $0.name.lowercased().contains(raw) }
+            .filter { CustomerSearchFilter.matches($0.toDomain(), query: raw) }
             .map { $0.toDomain() }
     }
 
@@ -95,6 +95,41 @@ actor LocalPersistence {
 
     func deleteCustomer(id: String) throws {
         guard let model = try firstModel(CustomerModel.self, where: #Predicate { $0.id == id })
+        else { return }
+        modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    // MARK: - WorkOrderTemplate
+
+    func fetchWorkOrderTemplate(id: String) throws -> WorkOrderTemplate? {
+        let model = try firstModel(WorkOrderTemplateModel.self, where: #Predicate { $0.id == id })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "WorkOrderTemplate") }
+    }
+
+    func listWorkOrderTemplates(createdByUserId: String) throws -> [WorkOrderTemplate] {
+        try modelContext
+            .fetch(
+                FetchDescriptor<WorkOrderTemplateModel>(
+                    predicate: #Predicate { $0.createdByUserId == createdByUserId },
+                    sortBy: [SortDescriptor(\.name)]
+                )
+            )
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertWorkOrderTemplate(_ template: WorkOrderTemplate) throws {
+        let rawId = template.id.rawValue
+        if let existing = try firstModel(WorkOrderTemplateModel.self, where: #Predicate { $0.id == rawId }) {
+            existing.apply(domain: template)
+        } else {
+            modelContext.insert(WorkOrderTemplateModel(domain: template))
+        }
+        try modelContext.save()
+    }
+
+    func deleteWorkOrderTemplate(id: String) throws {
+        guard let model = try firstModel(WorkOrderTemplateModel.self, where: #Predicate { $0.id == id })
         else { return }
         modelContext.delete(model)
         try modelContext.save()
@@ -302,6 +337,53 @@ actor LocalPersistence {
         try modelContext.save()
     }
 
+    // MARK: - CustomerSatisfaction
+
+    func fetchCustomerSatisfaction(id: String) throws -> CustomerSatisfaction? {
+        let model = try firstModel(CustomerSatisfactionModel.self, where: #Predicate { $0.id == id })
+        return try model.map { try requireDecoded($0.toDomain(), entity: "CustomerSatisfaction") }
+    }
+
+    func listCustomerSatisfactions(workOrderId: String) throws -> [CustomerSatisfaction] {
+        try modelContext
+            .fetch(FetchDescriptor<CustomerSatisfactionModel>(
+                predicate: #Predicate { $0.workOrderId == workOrderId },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func listCustomerSatisfactions(customerId: String) throws -> [CustomerSatisfaction] {
+        try modelContext
+            .fetch(FetchDescriptor<CustomerSatisfactionModel>(
+                predicate: #Predicate { $0.customerId == customerId },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func listCustomerSatisfactions(statusRaw: String) throws -> [CustomerSatisfaction] {
+        try modelContext
+            .fetch(FetchDescriptor<CustomerSatisfactionModel>(
+                predicate: #Predicate { $0.statusRaw == statusRaw },
+                sortBy: [SortDescriptor(\.createdAt)]
+            ))
+            .compactMap { $0.toDomain() }
+    }
+
+    func upsertCustomerSatisfaction(_ satisfaction: CustomerSatisfaction) throws {
+        let satisfactionId = satisfaction.id.rawValue
+        let workOrderId = satisfaction.workOrderId.rawValue
+        if let existing = try firstModel(CustomerSatisfactionModel.self, where: #Predicate { $0.id == satisfactionId }) {
+            existing.apply(domain: satisfaction)
+        } else {
+            let model = CustomerSatisfactionModel(domain: satisfaction)
+            model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == workOrderId })
+            modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
     // MARK: - Notification
 
     func listNotifications(recipientUserId: String, unreadOnly: Bool) throws -> [AppNotification] {
@@ -385,6 +467,11 @@ actor LocalPersistence {
             return .duplicate(existing: domain)
         }
 
+        if let duplicate = try findActiveDuplicate(of: operation) {
+            let domain = try requireDecoded(duplicate.toDomain(), entity: "SyncOperation")
+            return .duplicate(existing: domain)
+        }
+
         guard operation.status == .pending else {
             throw DomainError.invalidData(reason: "syncOperation.enqueueRequiresPending")
         }
@@ -397,6 +484,35 @@ actor LocalPersistence {
         modelContext.insert(SyncOperationModel(domain: operation))
         try modelContext.save()
         return .inserted(operation)
+    }
+
+    /// Blocks a second active row for the same logical mutation tuple.
+    private func findActiveDuplicate(of operation: SyncOperation) throws -> SyncOperationModel? {
+        let entityTypeRaw = operation.entityType.rawValue
+        let entityId = operation.entityId
+        let operationTypeRaw = operation.operationType.rawValue
+        let localVersion = operation.localVersion
+        let pendingRaw = SyncStatus.pending.rawValue
+        let inProgressRaw = SyncStatus.inProgress.rawValue
+        let failedRaw = SyncStatus.failed.rawValue
+        let conflictRaw = SyncStatus.conflict.rawValue
+        let rows = try modelContext.fetch(
+            FetchDescriptor<SyncOperationModel>(
+                predicate: #Predicate {
+                    $0.entityTypeRaw == entityTypeRaw
+                        && $0.entityId == entityId
+                        && $0.operationTypeRaw == operationTypeRaw
+                        && $0.localVersion == localVersion
+                        && (
+                            $0.statusRaw == pendingRaw
+                                || $0.statusRaw == inProgressRaw
+                                || $0.statusRaw == failedRaw
+                                || $0.statusRaw == conflictRaw
+                        )
+                }
+            )
+        )
+        return rows.first
     }
 
     /// Retry reset: `.failed` → `.pending` without going through
@@ -478,6 +594,24 @@ actor LocalPersistence {
         )
         for row in rows {
             modelContext.delete(row)
+        }
+        try modelContext.save()
+    }
+
+    func deleteFailedSyncOperations(ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            guard let model = try firstModel(
+                SyncOperationModel.self,
+                where: #Predicate { $0.id == id }
+            ) else {
+                throw DomainError.notFound(entity: "SyncOperation", id: id)
+            }
+            let current = try requireDecoded(model.toDomain(), entity: "SyncOperation")
+            guard current.status == .failed else {
+                throw DomainError.invalidData(reason: "syncOperation.deleteFailedOnlyFailed")
+            }
+            modelContext.delete(model)
         }
         try modelContext.save()
     }

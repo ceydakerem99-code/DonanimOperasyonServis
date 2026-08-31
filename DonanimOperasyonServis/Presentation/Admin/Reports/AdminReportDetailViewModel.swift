@@ -1,26 +1,6 @@
 import Foundation
 import Observation
 
-struct AdminReportMetric: Identifiable, Equatable, Sendable {
-    let id: String
-    let title: String
-    let value: String
-}
-
-struct AdminStatusBreakdown: Identifiable, Equatable, Sendable {
-    let id: String
-    let status: WorkOrderStatus
-    let count: Int
-    let percentage: Double
-}
-
-struct AdminReportRelatedWorkOrder: Identifiable, Equatable, Sendable {
-    let id: WorkOrderID
-    let workOrderNumber: String
-    let subtitle: String
-    let count: Int
-}
-
 @Observable
 @MainActor
 final class AdminReportDetailViewModel {
@@ -33,12 +13,70 @@ final class AdminReportDetailViewModel {
 
     let kind: AdminReportKind
     private(set) var phase: Phase = .loading
-    private(set) var metrics: [AdminReportMetric] = []
-    private(set) var statusBreakdown: [AdminStatusBreakdown] = []
-    private(set) var relatedWorkOrders: [AdminReportRelatedWorkOrder] = []
+    private(set) var payload = ReportDetailPayload()
+    var reportSearchText = ""
 
     private let actor: User
     private let dependencies: AdminDependencies
+    private let asyncLoad = AsyncLoadSession()
+    private var cachedOrders: [WorkOrder] = []
+
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool { !payload.isEmpty }
+
+    var displayedWorkOrderEntries: [WorkOrderReportEntry] {
+        ReportSearchFilters.filterWorkOrders(payload.workOrderEntries, query: reportSearchText)
+    }
+
+    var displayedSignatureEntries: [SignatureReportEntry] {
+        ReportSearchFilters.filterSignatures(payload.signatureEntries, query: reportSearchText)
+    }
+
+    var displayedPhotoEntries: [PhotoReportEntry] {
+        ReportSearchFilters.filterPhotos(payload.photoEntries, query: reportSearchText)
+    }
+
+    var displayedPauseEntries: [PauseReportEntry] {
+        ReportSearchFilters.filterPauses(payload.pauseEntries, query: reportSearchText)
+    }
+
+    var displayedTechnicianEntries: [TechnicianPerformanceEntry] {
+        ReportSearchFilters.filterTechnicians(payload.technicianEntries, query: reportSearchText)
+    }
+
+    var metrics: [AdminReportMetric] { payload.metrics }
+    var statusBreakdown: [AdminStatusBreakdown] { payload.statusBreakdown }
+
+    var canBulkDelete: Bool {
+        RoleAccessPolicy.can(.deleteWorkOrder, as: actor.role) && kind == .workOrders
+    }
+
+    var isSelectionMode = false
+    private(set) var selectedOrderIDs: Set<WorkOrderID> = []
+    private(set) var isPerformingBulkDelete = false
+    var showsBulkDeleteConfirmation = false
+    private(set) var bulkResultSummary: String?
+    private(set) var bulkFailureDetails: [BulkWorkOrderMutationFailure] = []
+
+    var selectedCount: Int { selectedOrderIDs.count }
+    var selectionSummaryText: String {
+        selectedCount == 0 ? "Seçim yok" : "\(selectedCount) iş emri seçildi"
+    }
+    var canPerformBulkDelete: Bool {
+        selectedCount > 0 && !isPerformingBulkDelete && canBulkDelete
+    }
+    var bulkDeleteConfirmationMessage: String {
+        "\(selectedCount) iş emri kalıcı olarak silinecek. Bu işlem geri alınamaz."
+    }
+    var bulkResultDetailMessage: String {
+        guard !bulkFailureDetails.isEmpty else { return bulkResultSummary ?? "" }
+        let lines = bulkFailureDetails.map { "\($0.workOrderNumber): \($0.reason)" }
+        let header = bulkResultSummary ?? ""
+        return ([header] + lines).joined(separator: "\n")
+    }
+    var eligibleSelectableCount: Int {
+        cachedOrders.filter(WorkOrderBulkMutationPolicy.supportsBulkDelete).count
+    }
 
     init(kind: AdminReportKind, actor: User, dependencies: AdminDependencies) {
         self.kind = kind
@@ -47,183 +85,145 @@ final class AdminReportDetailViewModel {
     }
 
     func load() async {
-        phase = .loading
-        relatedWorkOrders = []
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
+
         do {
             let orders = try await dependencies.getSystemWorkOrders.execute(actor: actor)
-            switch kind {
-            case .workOrders:
-                buildWorkOrderReport(from: orders)
-            case .technicianPerformance:
-                await buildTechnicianReport(from: orders)
-            case .customerSummary:
-                await buildCustomerReport(from: orders)
-            case .pauseReasons:
-                buildPauseReasonReport(from: orders)
-            case .signatures:
-                await buildAttachmentReport(kind: .signatures, orders: orders)
-            case .photos:
-                await buildAttachmentReport(kind: .photos, orders: orders)
-            }
-            phase = metrics.isEmpty && statusBreakdown.isEmpty && relatedWorkOrders.isEmpty ? .empty : .loaded
+            guard asyncLoad.isCurrent(generation) else { return }
+            cachedOrders = orders
+
+            let repositories = ReportDatasetBuilder.Repositories(
+                customerRepository: dependencies.customerRepository,
+                userRepository: dependencies.userRepository,
+                signatureRepository: dependencies.signatureRepository,
+                workOrderPhotoRepository: dependencies.workOrderPhotoRepository,
+                statusHistoryRepository: dependencies.statusHistoryRepository
+            )
+            payload = await ReportDatasetBuilder.build(
+                kind: kind,
+                orders: orders,
+                repositories: repositories
+            )
+            guard asyncLoad.isCurrent(generation) else { return }
+            phase = payload.isEmpty ? .empty : .loaded
         } catch is CancellationError {
-            return
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.empty
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error(error.adminMessage)
         } catch {
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error("Rapor yüklenemedi.")
         }
     }
 
-    private func buildWorkOrderReport(from orders: [WorkOrder]) {
-        let total = orders.count
-        let completed = orders.filter { $0.status == .completed }.count
-        let completionRate = total > 0 ? Double(completed) / Double(total) * 100 : 0
-
-        metrics = [
-            AdminReportMetric(id: "total", title: "Toplam İş Emri", value: "\(total)"),
-            AdminReportMetric(id: "completed", title: "Tamamlanan", value: "\(completed)"),
-            AdminReportMetric(id: "rate", title: "Tamamlanma Oranı", value: String(format: "%.0f%%", completionRate))
-        ]
-
-        statusBreakdown = WorkOrderStatus.allCases.compactMap { status in
-            let count = orders.filter { $0.status == status }.count
-            guard count > 0 else { return nil }
-            let pct = total > 0 ? Double(count) / Double(total) * 100 : 0
-            return AdminStatusBreakdown(
-                id: status.rawValue,
-                status: status,
-                count: count,
-                percentage: pct
-            )
-        }
-
-        relatedWorkOrders = orders
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .prefix(20)
-            .map {
-                AdminReportRelatedWorkOrder(
-                    id: $0.id,
-                    workOrderNumber: $0.workOrderNumber,
-                    subtitle: $0.status.displayName,
-                    count: 0
-                )
-            }
-    }
-
-    private func buildTechnicianReport(from orders: [WorkOrder]) async {
-        var counts: [UserID: Int] = [:]
-        var statusByTech: [UserID: [WorkOrderStatus: Int]] = [:]
-        for order in orders {
-            counts[order.assignedTechnicianId, default: 0] += 1
-            statusByTech[order.assignedTechnicianId, default: [:]][order.status, default: 0] += 1
-        }
-
-        var built: [AdminReportMetric] = []
-        for (techId, count) in counts.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let name = (try? await dependencies.userRepository.fetch(id: techId))?.fullName ?? techId.rawValue
-            let statusSummary = (statusByTech[techId] ?? [:])
-                .sorted { $0.key.rawValue < $1.key.rawValue }
-                .map { "\($0.key.displayName):\($0.value)" }
-                .joined(separator: " · ")
-            built.append(
-                AdminReportMetric(
-                    id: techId.rawValue,
-                    title: name,
-                    value: statusSummary.isEmpty ? "\(count) iş emri" : "\(count) · \(statusSummary)"
-                )
-            )
-        }
-        metrics = built
-        statusBreakdown = WorkOrderStatus.allCases.compactMap { status in
-            let count = orders.filter { $0.status == status }.count
-            guard count > 0 else { return nil }
-            let pct = orders.isEmpty ? 0 : Double(count) / Double(orders.count) * 100
-            return AdminStatusBreakdown(
-                id: status.rawValue,
-                status: status,
-                count: count,
-                percentage: pct
-            )
+    func setSelectionMode(_ enabled: Bool) {
+        isSelectionMode = enabled
+        if !enabled {
+            selectedOrderIDs.removeAll()
+            showsBulkDeleteConfirmation = false
         }
     }
 
-    private func buildCustomerReport(from orders: [WorkOrder]) async {
-        let grouped = Dictionary(grouping: orders, by: \.customerId)
-        var built: [AdminReportMetric] = []
-        for (customerId, items) in grouped.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let name = (try? await dependencies.customerRepository.fetch(id: customerId))?.name ?? customerId.rawValue
-            built.append(
-                AdminReportMetric(
-                    id: customerId.rawValue,
-                    title: name,
-                    value: "\(items.count) iş emri"
-                )
-            )
-        }
-        metrics = built
+    func isSelected(_ orderId: WorkOrderID) -> Bool {
+        selectedOrderIDs.contains(orderId)
     }
 
-    private func buildPauseReasonReport(from orders: [WorkOrder]) {
-        let paused = orders.filter { $0.status == .paused }
-        let grouped = Dictionary(grouping: paused.compactMap(\.currentPauseReason)) { $0 }
-        metrics = PauseReason.allCases.map { reason in
-            let count = grouped[reason]?.count ?? 0
-            return AdminReportMetric(
-                id: reason.rawValue,
-                title: reason.displayName,
-                value: "\(count)"
-            )
+    func canSelect(_ orderId: WorkOrderID) -> Bool {
+        guard let order = cachedOrders.first(where: { $0.id == orderId }) else { return false }
+        return WorkOrderBulkMutationPolicy.supportsBulkDelete(order)
+    }
+
+    func toggleSelection(_ orderId: WorkOrderID) {
+        guard canSelect(orderId) else { return }
+        if selectedOrderIDs.contains(orderId) {
+            selectedOrderIDs.remove(orderId)
+        } else {
+            selectedOrderIDs.insert(orderId)
         }
     }
 
-    private func buildAttachmentReport(kind: AdminReportKind, orders: [WorkOrder]) async {
-        let completed = orders.filter { $0.status == .completed }
-        var totalAttachments = 0
-        var related: [AdminReportRelatedWorkOrder] = []
+    func selectAllEligible() {
+        let visibleIDs = Set(displayedWorkOrderEntries.map(\.id))
+        selectedOrderIDs = Set(
+            WorkOrderBulkMutationPolicy.eligibleOrdersForDelete(from: cachedOrders)
+                .map(\.id)
+                .filter { visibleIDs.contains($0) }
+        )
+    }
 
-        for order in completed {
-            let count: Int
-            if kind == .signatures {
-                count = (try? await dependencies.signatureRepository.list(for: order.id))?.count ?? 0
-            } else {
-                count = (try? await dependencies.workOrderPhotoRepository.list(for: order.id))?.count ?? 0
-            }
-            totalAttachments += count
-            if count > 0 {
-                related.append(
-                    AdminReportRelatedWorkOrder(
-                        id: order.id,
-                        workOrderNumber: order.workOrderNumber,
-                        subtitle: kind == .signatures ? "İmza" : "Fotoğraf",
-                        count: count
-                    )
-                )
-            }
+    func clearSelection() {
+        selectedOrderIDs.removeAll()
+    }
+
+    func requestBulkDeleteConfirmation() {
+        guard canPerformBulkDelete else { return }
+        showsBulkDeleteConfirmation = true
+    }
+
+    func cancelBulkDeleteConfirmation() {
+        showsBulkDeleteConfirmation = false
+    }
+
+    func confirmBulkDelete() async {
+        guard canPerformBulkDelete else {
+            showsBulkDeleteConfirmation = false
+            return
         }
 
-        metrics = [
-            AdminReportMetric(
-                id: "completed",
-                title: "Tamamlanan İş Emri",
-                value: "\(completed.count)"
-            ),
-            AdminReportMetric(
-                id: "attachments",
-                title: kind == .signatures ? "Toplam İmza" : "Toplam Fotoğraf",
-                value: "\(totalAttachments)"
-            )
-        ]
-        if related.isEmpty {
-            metrics.append(
-                AdminReportMetric(
-                    id: "hint",
-                    title: "Durum",
-                    value: completed.isEmpty ? "Tamamlanan iş emri yok" : "Kayıt bulunamadı"
-                )
-            )
+        isPerformingBulkDelete = true
+        defer {
+            isPerformingBulkDelete = false
+            showsBulkDeleteConfirmation = false
         }
-        relatedWorkOrders = related.sorted { $0.workOrderNumber < $1.workOrderNumber }
+
+        let orderIds = Array(selectedOrderIDs)
+        let result = await AdminWorkOrderBulkOperations.delete(
+            orderIds: orderIds,
+            ordersByID: ordersByID(),
+            actor: actor,
+            service: dependencies.workOrderService
+        )
+        applyBulkDeleteResult(result)
+        await load()
+        if result.isCompleteSuccess {
+            setSelectionMode(false)
+        }
+    }
+
+    func dismissBulkResult() {
+        bulkResultSummary = nil
+        bulkFailureDetails = []
+    }
+
+    private func ordersByID() -> [WorkOrderID: WorkOrder] {
+        Dictionary(uniqueKeysWithValues: cachedOrders.map { ($0.id, $0) })
+    }
+
+    private func applyBulkDeleteResult(_ result: BulkWorkOrderMutationResult) {
+        bulkFailureDetails = result.failures
+        if result.successCount > 0 && result.failureCount == 0 {
+            bulkResultSummary = "\(result.successCount) iş emri silindi"
+            selectedOrderIDs.subtract(result.succeeded)
+        } else if result.successCount > 0 && result.failureCount > 0 {
+            bulkResultSummary = "\(result.successCount) iş emri silindi\n\(result.failureCount) iş emri silinemedi"
+            selectedOrderIDs = Set(result.failures.map(\.orderId))
+        } else if result.failureCount > 0 {
+            bulkResultSummary = "\(result.failureCount) iş emri silinemedi"
+        } else {
+            bulkResultSummary = "Silinecek iş emri bulunamadı."
+        }
     }
 }
 
@@ -236,15 +236,28 @@ extension AdminReportDetailViewModel {
             dependencies: DIContainer.mock().makeAdminDependencies()
         )
         vm.phase = .loaded
-        vm.metrics = [
-            AdminReportMetric(id: "total", title: "Toplam İş Emri", value: "48"),
-            AdminReportMetric(id: "completed", title: "Tamamlanan", value: "25"),
-            AdminReportMetric(id: "rate", title: "Tamamlanma Oranı", value: "52%")
-        ]
-        vm.statusBreakdown = [
-            AdminStatusBreakdown(id: "assigned", status: .assigned, count: 12, percentage: 25),
-            AdminStatusBreakdown(id: "completed", status: .completed, count: 25, percentage: 52)
-        ]
+        vm.payload = ReportDetailPayload(
+            metrics: [
+                AdminReportMetric(id: "total", title: "Toplam İş Emri", value: "48"),
+                AdminReportMetric(id: "completed", title: "Tamamlanan", value: "25")
+            ],
+            workOrderEntries: [
+                WorkOrderReportEntry(
+                    id: WorkOrderID("wo-preview"),
+                    workOrderNumber: "WO-741970",
+                    customerName: "Ceka",
+                    workplace: "Ceka · Çorum",
+                    technicianName: "Mehmet Kerem",
+                    priority: .urgent,
+                    status: .assigned,
+                    scheduledDate: AdminPreviewData.referenceDate,
+                    deviceLabel: "POS · Ingenico iCT250",
+                    workType: .repair,
+                    signatureStatusLabel: "İmzasız",
+                    photoCount: 2
+                )
+            ]
+        )
         return vm
     }
 }

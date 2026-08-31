@@ -15,4 +15,5 @@ enum SyncEntityType: String, CaseIterable, Hashable, Sendable, Codable {
     case signature
     case editRequest
     case notification
+    case customerSatisfaction
 }

@@ -202,12 +202,64 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         XCTAssertEqual(conflict?.remoteVersion, 0)
     }
 
-    func testStaleCompletedLocalUpdateIsConflictAndDoesNotReopen() async throws {
+    func testOfflineCompletedLocalUpdatePushesToRemote() async throws {
         let env = try await makeEnvironment()
-        let localOrder = DomainFixtures.workOrder(status: .completed, completedAt: now)
+        let tech = DomainFixtures.technicianUser()
+        var localOrder = DomainFixtures.workOrder(status: .inProgress)
+        let completedGPS = DomainFixtures.location(
+            workOrderId: localOrder.id,
+            event: .completed,
+            capturedByUserId: tech.id
+        )
+        try await env.local.users.save(tech)
         try await env.local.workOrders.save(localOrder)
+        try await env.local.locations.save(completedGPS)
+        try await SyncManagerTestFactory.seedRemoteWorkOrder(localOrder, on: env.remoteWorkOrders)
+        let gpsCreate = try SyncOperation.pending(
+            id: SyncOperationID("op-gps-done"),
+            entityType: .workOrderLocation,
+            entityId: completedGPS.id,
+            operationType: .create,
+            payloadReference: localOrder.id.rawValue,
+            createdAt: now,
+            localVersion: 1,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(gpsCreate)
+        try await env.manager.sync(operation: gpsCreate, now: now)
+
+        localOrder.status = .completed
+        localOrder.completedAt = now
+        localOrder.updatedAt = now
+        try await env.local.workOrders.save(localOrder)
+
         let operation = try makeOperation(
-            id: "op-stale",
+            id: "op-complete-push",
+            entityType: .workOrder,
+            entityId: localOrder.id.rawValue,
+            operationType: .update,
+            actorUserId: tech.id.rawValue
+        )
+        try await env.queue.enqueue(operation)
+        try await env.manager.sync(operation: operation, now: now)
+
+        let stored = try await env.queue.fetch(id: operation.id)
+        XCTAssertEqual(stored.status, .succeeded)
+        let remote = try await env.remoteWorkOrders.fetch(id: localOrder.id)
+        XCTAssertEqual(remote.status, .completed)
+        let writes = await env.probe.recordedWrites()
+        XCTAssertTrue(writes.contains(.save(.workOrder, localOrder.id.rawValue)))
+    }
+
+    func testDoesNotReopenRemotelyCompletedWorkOrder() async throws {
+        let env = try await makeEnvironment()
+        let localOrder = DomainFixtures.workOrder(status: .inProgress)
+        try await env.local.workOrders.save(localOrder)
+        try await env.remoteWorkOrders.save(
+            DomainFixtures.workOrder(status: .completed, completedAt: now)
+        )
+        let operation = try makeOperation(
+            id: "op-no-reopen",
             entityType: .workOrder,
             entityId: localOrder.id.rawValue,
             operationType: .update
@@ -218,7 +270,7 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         let stored = try await env.queue.fetch(id: operation.id)
         XCTAssertEqual(stored.status, .conflict)
         let local = try await env.local.workOrders.fetch(id: localOrder.id)
-        XCTAssertEqual(local.status, .completed)
+        XCTAssertEqual(local.status, .inProgress)
         let writes = await env.probe.recordedWrites()
         XCTAssertTrue(writes.isEmpty)
     }
@@ -237,6 +289,10 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         let signature = DomainFixtures.signature(kind: .technician)
         let edit = DomainFixtures.editRequest()
         let notification = DomainFixtures.notification()
+        let satisfaction = DomainFixtures.customerSatisfaction(
+            workOrderId: order.id,
+            customerId: order.customerId
+        )
 
         try await env.local.users.save(user)
         try await env.local.customers.save(customer)
@@ -248,33 +304,58 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         try await env.local.signatures.save(signature)
         try await env.local.editRequests.save(edit)
         try await env.local.notifications.save(notification)
+        try await env.local.customerSatisfactions.save(satisfaction)
+        try await SyncManagerTestFactory.seedRemoteWorkOrder(order, on: env.remoteWorkOrders)
 
         let parent = order.id.rawValue
+        let techID = user.id.rawValue
         let ops: [SyncOperation] = try [
-            makeOperation(id: "d-user", entityType: .user, entityId: user.id.rawValue),
+            makeOperation(
+                id: "d-user",
+                entityType: .user,
+                entityId: user.id.rawValue,
+                operationType: .update,
+                actorUserId: techID
+            ),
             makeOperation(id: "d-cust", entityType: .customer, entityId: customer.id.rawValue),
-            makeOperation(id: "d-wo", entityType: .workOrder, entityId: order.id.rawValue),
+            makeOperation(
+                id: "d-wo",
+                entityType: .workOrder,
+                entityId: order.id.rawValue,
+                operationType: .update,
+                actorUserId: techID
+            ),
             makeOperation(
                 id: "d-note", entityType: .workOrderNote, entityId: note.id,
-                payloadReference: parent
+                payloadReference: parent,
+                actorUserId: techID
             ),
             makeOperation(
                 id: "d-photo", entityType: .workOrderPhoto, entityId: photo.id,
-                payloadReference: parent
+                payloadReference: parent,
+                actorUserId: techID
             ),
             makeOperation(
                 id: "d-loc", entityType: .workOrderLocation, entityId: location.id,
-                payloadReference: parent
+                payloadReference: parent,
+                actorUserId: techID
             ),
             makeOperation(
                 id: "d-hist", entityType: .workOrderStatusHistory, entityId: history.id,
-                payloadReference: parent
+                payloadReference: parent,
+                actorUserId: techID
             ),
             makeOperation(
                 id: "d-sig", entityType: .signature, entityId: signature.id,
-                payloadReference: parent
+                payloadReference: parent,
+                actorUserId: techID
             ),
             makeOperation(id: "d-edit", entityType: .editRequest, entityId: edit.id.rawValue),
+            makeOperation(
+                id: "d-cs",
+                entityType: .customerSatisfaction,
+                entityId: satisfaction.id.rawValue
+            ),
             makeOperation(
                 id: "d-notif", entityType: .notification, entityId: notification.id.rawValue,
                 payloadReference: notification.recipientUserId.rawValue
@@ -284,7 +365,7 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         try await env.manager.syncPending(now: now)
 
         let writes = await env.probe.recordedWrites()
-        XCTAssertTrue(writes.contains(.save(.user, user.id.rawValue)))
+        XCTAssertTrue(writes.contains(.patchSelfService(.user, user.id.rawValue)))
         XCTAssertTrue(writes.contains(.save(.customer, customer.id.rawValue)))
         XCTAssertTrue(writes.contains(.save(.workOrder, order.id.rawValue)))
         XCTAssertTrue(writes.contains(.save(.workOrderNote, note.id)))
@@ -293,10 +374,13 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         XCTAssertTrue(writes.contains(.append(.workOrderStatusHistory, history.id)))
         XCTAssertTrue(writes.contains(.save(.signature, signature.id)))
         XCTAssertTrue(writes.contains(.save(.editRequest, edit.id.rawValue)))
+        XCTAssertTrue(writes.contains(.save(.customerSatisfaction, satisfaction.id.rawValue)))
         XCTAssertTrue(writes.contains(.save(.notification, notification.id.rawValue)))
         for op in ops {
-            let stored = try await env.queue.fetch(id: op.id)
-            XCTAssertEqual(stored.status, .succeeded, op.id.rawValue)
+            await XCTAssertThrowsErrorAsync(
+                try await env.queue.fetch(id: op.id),
+                "succeeded row \(op.id.rawValue) should be pruned"
+            )
         }
     }
 
@@ -318,8 +402,14 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
 
     func testNoteDeleteDispatch() async throws {
         let env = try await makeEnvironment()
-        let order = DomainFixtures.workOrder()
+        let tech = DomainFixtures.technicianUser()
+        let order = DomainFixtures.workOrder(
+            assignedTechnicianId: tech.id,
+            status: .inProgress
+        )
+        try await env.local.users.save(tech)
         try await env.local.workOrders.save(order)
+        try await SyncManagerTestFactory.seedRemoteWorkOrder(order, on: env.remoteWorkOrders)
         let operation = try makeOperation(
             id: "op-ndel",
             entityType: .workOrderNote,
@@ -364,10 +454,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             writes,
             [.save(.customer, first.id.rawValue), .save(.customer, second.id.rawValue)]
         )
-        let earlyStored = try await env.queue.fetch(id: early.id)
-        let laterStored = try await env.queue.fetch(id: later.id)
-        XCTAssertEqual(earlyStored.status, .succeeded)
-        XCTAssertEqual(laterStored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: early.id))
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: later.id))
     }
 
     func testDuplicateSyncDoesNotHitRemoteTwice() async throws {
@@ -445,10 +533,14 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         let manager: LocalToRemoteSyncManager
     }
 
-    private func makeEnvironment() async throws -> Environment {
+    private func makeEnvironment(
+        authUID: String = DomainFixtures.technicianUser().id.rawValue
+    ) async throws -> Environment {
         let local = try SwiftDataTestHarness()
         let probe = SyncRemoteProbe()
         let remote = SyncManagerTestFactory.remoteBundle(probe: probe)
+        let auth = FakeFirebaseAuthService()
+        auth.setUID(authUID)
         let localEntities = SyncEntityRepositories(
             users: local.users,
             customers: local.customers,
@@ -459,6 +551,7 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             statusHistory: local.statusHistory,
             signatures: local.signatures,
             editRequests: local.editRequests,
+            customerSatisfactions: local.customerSatisfactions,
             notifications: local.notifications
         )
         let manager = LocalToRemoteSyncManager(
@@ -466,7 +559,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             conflicts: local.syncConflicts,
             local: localEntities,
             remote: remote.repositories,
-            reachability: FakeNetworkReachability()
+            reachability: FakeNetworkReachability(),
+            authService: auth
         )
         return Environment(
             local: local,
@@ -485,7 +579,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
         entityId: String,
         operationType: SyncOperationType = .create,
         payloadReference: String? = nil,
-        createdAt: Date? = nil
+        createdAt: Date? = nil,
+        actorUserId: String? = nil
     ) throws -> SyncOperation {
         try SyncOperation.pending(
             id: SyncOperationID(id),
@@ -494,7 +589,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             operationType: operationType,
             payloadReference: payloadReference,
             createdAt: createdAt ?? now,
-            localVersion: 1
+            localVersion: 1,
+            actorUserId: actorUserId
         )
     }
 }

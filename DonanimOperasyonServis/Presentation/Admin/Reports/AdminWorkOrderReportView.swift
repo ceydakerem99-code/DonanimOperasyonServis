@@ -1,85 +1,129 @@
 import SwiftUI
 
 struct AdminWorkOrderReportView: View {
-    @Bindable var viewModel: AdminWorkOrderReportViewModel
+    let workOrderId: WorkOrderID
+    let actor: User
+    let dependencies: AdminDependencies
+    var onDeleted: (() -> Void)?
+
+    @State private var viewModel: AdminWorkOrderReportViewModel
+
+    init(
+        workOrderId: WorkOrderID,
+        actor: User,
+        dependencies: AdminDependencies,
+        onDeleted: (() -> Void)? = nil
+    ) {
+        self.workOrderId = workOrderId
+        self.actor = actor
+        self.dependencies = dependencies
+        self.onDeleted = onDeleted
+        _viewModel = State(
+            initialValue: AdminWorkOrderReportViewModel(
+                workOrderId: workOrderId,
+                actor: actor,
+                dependencies: dependencies
+            )
+        )
+    }
 
     var body: some View {
-        Group {
-            switch viewModel.phase {
-            case .loading:
-                LoadingView(message: "Rapor yükleniyor...")
-            case .error(let message):
-                ErrorBanner(title: "Rapor yüklenemedi", message: message) {
-                    Task { await viewModel.load() }
-                }
-                .padding(AppSpacing.l)
-            case .loaded:
-                if let content = viewModel.content {
-                    reportBody(content)
+        AsyncLoadContainerView(
+            isLoading: viewModel.phase == .loading,
+            showsLoadingIndicator: viewModel.showsLoadingIndicator,
+            hasCachedContent: viewModel.hasCachedContent,
+            errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+            isEmpty: false,
+            loadingMessage: "Rapor yükleniyor...",
+            errorTitle: "Rapor yüklenemedi",
+            onRetry: { Task { await viewModel.load() } }
+        ) {
+            if let content = viewModel.content {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.m) {
+                        if let deleteError = viewModel.deleteError {
+                            ErrorBanner(title: "Silme hatası", message: deleteError)
+                        }
+                        WorkOrderReportDetailSections(
+                            snapshot: content.snapshot,
+                            mediaLoader: viewModel.mediaLoader
+                        )
+                    }
+                    .padding(AppSpacing.l)
                 }
             }
         }
         .navigationTitle("İş Emri Raporu")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.load() }
-    }
-
-    @ViewBuilder
-    private func reportBody(_ content: AdminWorkOrderReportContent) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
-                HStack {
-                    Text(content.workOrder.workOrderNumber)
-                        .font(AppFont.title)
-                    Spacer()
-                    StatusChip(status: WorkOrderPresentationMapping.appStatus(from: content.workOrder.status))
+        .toolbar { toolbarContent }
+        .id(workOrderId)
+        .task(id: workOrderId) { await viewModel.load() }
+        .confirmationDialog(
+            "İş Emrini Sil",
+            isPresented: $viewModel.showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sil", role: .destructive) {
+                Task {
+                    if await viewModel.confirmDelete() {
+                        onDeleted?()
+                    }
                 }
-
-                InfoRow(title: "Müşteri", value: content.customerName, systemImage: "building.2")
-                InfoRow(
-                    title: "Cihaz",
-                    value: "\(content.workOrder.deviceCategory.displayName) · \(content.workOrder.deviceBrand)",
-                    systemImage: "creditcard"
-                )
-                InfoRow(title: "İş Türü", value: content.workOrder.workType.displayName, systemImage: "wrench.and.screwdriver")
-
-                if content.workOrder.status == .completed, let completedAt = content.workOrder.completedAt {
-                    InfoRow(
-                        title: "Tamamlanma",
-                        value: WorkOrderPresentationMapping.formatDateTime(completedAt),
-                        systemImage: "checkmark.seal"
-                    )
-                }
-
-                SectionHeader(title: "Ekler")
-                attachmentRow(title: "Servis Notları", count: content.noteCount, systemImage: "note.text")
-                attachmentRow(title: "İmzalar", count: content.signatureCount, systemImage: "pencil.and.scribble")
-                attachmentRow(title: "Fotoğraflar", count: content.photoCount, systemImage: "camera")
             }
-            .padding(AppSpacing.l)
+            Button("Vazgeç", role: .cancel) {
+                viewModel.cancelDeleteConfirmation()
+            }
+        } message: {
+            Text(viewModel.deleteConfirmationMessage)
         }
     }
 
-    private func attachmentRow(title: String, count: Int, systemImage: String) -> some View {
-        HStack {
-            Image(systemName: systemImage)
-                .foregroundStyle(AppColor.brandPrimary)
-            Text(title)
-                .font(AppFont.body)
-            Spacer()
-            Text("\(count)")
-                .font(AppFont.caption)
-                .foregroundStyle(AppColor.secondaryText)
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            if let url = viewModel.pdfFileURL {
+                ShareLink(item: url) {
+                    Label("PDF Paylaş", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Button {
+                    Task { await viewModel.exportPDF() }
+                } label: {
+                    if viewModel.isExportingPDF {
+                        ProgressView()
+                    } else {
+                        Label("PDF", systemImage: "doc.richtext")
+                    }
+                }
+                .disabled(viewModel.content == nil || viewModel.isExportingPDF)
+            }
         }
-        .padding(AppSpacing.m)
-        .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
+
+        if viewModel.canDeleteWorkOrder {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    viewModel.requestDeleteConfirmation()
+                } label: {
+                    if viewModel.isDeleting {
+                        ProgressView()
+                    } else {
+                        Label("Sil", systemImage: "trash")
+                    }
+                }
+                .disabled(viewModel.isDeleting)
+            }
+        }
     }
 }
 
 #if DEBUG
 #Preview("Work Order Report") {
     NavigationStack {
-        AdminWorkOrderReportView(viewModel: .previewLoaded())
+        AdminWorkOrderReportView(
+            workOrderId: WorkOrderID("wo-preview"),
+            actor: AdminPreviewData.adminUser,
+            dependencies: DIContainer.mock().makeAdminDependencies()
+        )
     }
 }
 #endif

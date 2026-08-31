@@ -3,6 +3,7 @@ import Foundation
 
 enum SyncRemoteWrite: Equatable, Sendable {
     case save(SyncEntityType, String)
+    case patchSelfService(SyncEntityType, String)
     case delete(SyncEntityType, String)
     case append(SyncEntityType, String)
 }
@@ -39,6 +40,11 @@ struct SpyingUserRepository: UserRepository {
         try await probe.throwIfFailed()
         try await inner.save(user)
         await probe.record(.save(.user, user.id.rawValue))
+    }
+    func updateSelfServiceProfile(_ user: User) async throws {
+        try await probe.throwIfFailed()
+        try await inner.updateSelfServiceProfile(user)
+        await probe.record(.patchSelfService(.user, user.id.rawValue))
     }
     func delete(id: UserID) async throws {
         try await probe.throwIfFailed()
@@ -190,6 +196,29 @@ struct SpyingEditRequestRepository: EditRequestRepository {
     }
 }
 
+struct SpyingCustomerSatisfactionRepository: CustomerSatisfactionRepository {
+    let inner: InMemoryCustomerSatisfactionRepository
+    let probe: SyncRemoteProbe
+
+    func fetch(id: CustomerSatisfactionID) async throws -> CustomerSatisfaction {
+        try await inner.fetch(id: id)
+    }
+    func list(for workOrderId: WorkOrderID) async throws -> [CustomerSatisfaction] {
+        try await inner.list(for: workOrderId)
+    }
+    func listByCustomer(_ customerId: CustomerID) async throws -> [CustomerSatisfaction] {
+        try await inner.listByCustomer(customerId)
+    }
+    func listByStatus(_ status: CustomerSatisfactionStatus) async throws -> [CustomerSatisfaction] {
+        try await inner.listByStatus(status)
+    }
+    func save(_ satisfaction: CustomerSatisfaction) async throws {
+        try await probe.throwIfFailed()
+        try await inner.save(satisfaction)
+        await probe.record(.save(.customerSatisfaction, satisfaction.id.rawValue))
+    }
+}
+
 struct SpyingNotificationRepository: NotificationRepository {
     let inner: InMemoryNotificationRepository
     let probe: SyncRemoteProbe
@@ -214,27 +243,44 @@ struct SpyingNotificationRepository: NotificationRepository {
 
 enum SyncManagerTestFactory {
 
+    /// Seeds the in-memory remote work-order store so technician child
+    /// sync rows pass `SyncRemoteWorkOrderGuard` (mirrors operator sync).
+    static func seedRemoteWorkOrder(
+        _ order: WorkOrder,
+        on remoteWorkOrders: InMemoryWorkOrderRepository
+    ) async throws {
+        try await remoteWorkOrders.save(order)
+    }
+
     static func remoteBundle(probe: SyncRemoteProbe) -> (
         repositories: SyncEntityRepositories,
         customers: InMemoryCustomerRepository,
-        workOrders: InMemoryWorkOrderRepository
+        workOrders: InMemoryWorkOrderRepository,
+        photos: InMemoryPhotoRepository,
+        signatures: InMemorySignatureRepository
     ) {
         let customers = InMemoryCustomerRepository()
         let workOrders = InMemoryWorkOrderRepository()
+        let photos = InMemoryPhotoRepository()
+        let signatures = InMemorySignatureRepository()
         let repositories = SyncEntityRepositories(
             users: SpyingUserRepository(inner: InMemoryUserRepository(), probe: probe),
             customers: SpyingCustomerRepository(inner: customers, probe: probe),
             workOrders: SpyingWorkOrderRepository(inner: workOrders, probe: probe),
             notes: SpyingNoteRepository(inner: InMemoryNoteRepository(), probe: probe),
-            photos: SpyingPhotoRepository(inner: InMemoryPhotoRepository(), probe: probe),
+            photos: SpyingPhotoRepository(inner: photos, probe: probe),
             locations: SpyingLocationRepository(inner: InMemoryLocationRepository(), probe: probe),
             statusHistory: SpyingStatusHistoryRepository(
                 inner: InMemoryStatusHistoryRepository(),
                 probe: probe
             ),
-            signatures: SpyingSignatureRepository(inner: InMemorySignatureRepository(), probe: probe),
+            signatures: SpyingSignatureRepository(inner: signatures, probe: probe),
             editRequests: SpyingEditRequestRepository(
                 inner: InMemoryEditRequestRepository(),
+                probe: probe
+            ),
+            customerSatisfactions: SpyingCustomerSatisfactionRepository(
+                inner: InMemoryCustomerSatisfactionRepository(),
                 probe: probe
             ),
             notifications: SpyingNotificationRepository(
@@ -242,6 +288,6 @@ enum SyncManagerTestFactory {
                 probe: probe
             )
         )
-        return (repositories, customers, workOrders)
+        return (repositories, customers, workOrders, photos, signatures)
     }
 }

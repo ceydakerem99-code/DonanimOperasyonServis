@@ -8,6 +8,8 @@ import SwiftUI
 struct DesignSystemPreviewScreen: View {
     @State private var operatorTab: String = "dashboard"
     @State private var technicianTab: String = "home"
+    @State private var previewTechnicianStrokes: [[CGPoint]] = []
+    @State private var previewCustomerStrokes: [[CGPoint]] = []
 
     var body: some View {
         NavigationStack {
@@ -158,6 +160,7 @@ struct DesignSystemPreviewScreen: View {
                         deviceLabel: "POS",
                         status: .assigned,
                         priority: .urgent,
+                        timeStatus: .today,
                         plannedDateLabel: "18.08.2026",
                         plannedTimeLabel: "10:30",
                         technicianName: "Ahmet Yılmaz"
@@ -173,6 +176,7 @@ struct DesignSystemPreviewScreen: View {
                         deviceLabel: "Yazıcı",
                         status: .inProgress,
                         priority: .high,
+                        timeStatus: .approaching,
                         plannedDateLabel: "18.08.2026",
                         plannedTimeLabel: "13:00-14:30",
                         technicianName: "Mehmet Kaya"
@@ -188,6 +192,7 @@ struct DesignSystemPreviewScreen: View {
                         deviceLabel: nil,
                         status: .completed,
                         priority: .normal,
+                        timeStatus: nil,
                         plannedDateLabel: "17.08.2026",
                         plannedTimeLabel: nil,
                         technicianName: "Ali Demir"
@@ -267,8 +272,16 @@ struct DesignSystemPreviewScreen: View {
     private var signatureSection: some View {
         section(title: "İmza") {
             VStack(spacing: AppSpacing.xl) {
-                SignatureCanvas(title: "Teknisyen İmzası", subtitle: "Ahmet Yılmaz")
-                SignatureCanvas(title: "Müşteri İmzası", subtitle: "Mehmet Kaya (ABC Market)")
+                SignatureCanvas(
+                    title: "Teknisyen İmzası",
+                    subtitle: "Ahmet Yılmaz",
+                    strokes: $previewTechnicianStrokes
+                )
+                SignatureCanvas(
+                    title: "Müşteri İmzası",
+                    subtitle: "Mehmet Kaya (ABC Market)",
+                    strokes: $previewCustomerStrokes
+                )
             }
         }
     }

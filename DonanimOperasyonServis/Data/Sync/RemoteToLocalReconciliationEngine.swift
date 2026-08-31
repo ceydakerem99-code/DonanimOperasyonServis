@@ -34,6 +34,14 @@ actor RemoteToLocalReconciliationEngine: Reconciling {
         _ request: ReconciliationRequest,
         now: Date
     ) async throws -> ReconciliationOutcome {
+        try await reconcile(request, prefetchedRemote: nil, now: now)
+    }
+
+    func reconcile(
+        _ request: ReconciliationRequest,
+        prefetchedRemote: ReconciledRecord?,
+        now: Date
+    ) async throws -> ReconciliationOutcome {
         let key = "\(request.entityType.rawValue):\(request.entityId)"
         guard !inFlightKeys.contains(key) else {
             throw DomainError.invalidData(reason: "reconciliation.inFlight")
@@ -53,13 +61,18 @@ actor RemoteToLocalReconciliationEngine: Reconciling {
             from: local,
             missingParentReason: "reconciliation.payloadReferenceMissing"
         )
-        let remoteRecord = try await SyncEntityRecordBridge.load(
-            entityType: request.entityType,
-            entityId: request.entityId,
-            parentId: request.parentId,
-            from: remote,
-            missingParentReason: "reconciliation.payloadReferenceMissing"
-        )
+        let remoteRecord: ReconciledRecord?
+        if let prefetchedRemote {
+            remoteRecord = prefetchedRemote
+        } else {
+            remoteRecord = try await SyncEntityRecordBridge.load(
+                entityType: request.entityType,
+                entityId: request.entityId,
+                parentId: request.parentId,
+                from: remote,
+                missingParentReason: "reconciliation.payloadReferenceMissing"
+            )
+        }
 
         var versions = request.versions
         if versions.localVersion == nil {

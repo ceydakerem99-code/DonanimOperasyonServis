@@ -37,9 +37,6 @@ struct LoginView: View {
             .padding(AppSpacing.l)
         }
         .background(AppColor.neutralBackground)
-        .onAppear {
-            session.clearAuthenticationError()
-        }
     }
 
     private var header: some View {

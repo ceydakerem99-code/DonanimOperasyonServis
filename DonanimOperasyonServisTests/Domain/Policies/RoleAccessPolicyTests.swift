@@ -10,6 +10,13 @@ final class RoleAccessPolicyTests: XCTestCase {
         XCTAssertTrue(RoleAccessPolicy.can(.viewRolesMatrix, as: .admin))
         XCTAssertTrue(RoleAccessPolicy.can(.manageSystemConfiguration, as: .admin))
         XCTAssertTrue(RoleAccessPolicy.can(.viewSystemReports, as: .admin))
+        XCTAssertTrue(RoleAccessPolicy.can(.viewServiceReport, as: .admin))
+        XCTAssertTrue(RoleAccessPolicy.can(.deleteWorkOrder, as: .admin))
+    }
+
+    func testOperatorAndTechnicianCannotDeleteWorkOrder() {
+        XCTAssertFalse(RoleAccessPolicy.can(.deleteWorkOrder, as: .operator))
+        XCTAssertFalse(RoleAccessPolicy.can(.deleteWorkOrder, as: .technician))
     }
 
     func testAdminCannotApproveOrRejectEditRequests() {
@@ -63,6 +70,7 @@ final class RoleAccessPolicyTests: XCTestCase {
     func testTechnicianFieldWorkActions() {
         let technicianActions: [DomainAction] = [
             .viewOwnAssignedWorkOrders,
+            .viewServiceReport,
             .acceptWorkOrder, .startTravelToCustomer, .markArrivedAtCustomer,
             .startServiceWork, .pauseServiceWork, .resumeServiceWork,
             .addWorkOrderNote, .addWorkOrderPhoto, .captureLocationSample,

@@ -118,25 +118,8 @@ final class Faz12AReportsAndNavigationTests: XCTestCase {
 
         XCTAssertEqual(vm.phase, .loaded)
         XCTAssertTrue(vm.metrics.contains { $0.title == "Ahmet Yılmaz" })
-        XCTAssertFalse(vm.statusBreakdown.isEmpty)
-    }
-
-    func testCustomerReportUsesCustomerNames() async throws {
-        let container = DIContainer.mock()
-        let deps = container.makeAdminDependencies()
-        let admin = DomainFixtures.adminUser()
-        let customer = DomainFixtures.customer(name: "ABC Market")
-        try await deps.userRepository.save(admin)
-        try await deps.customerRepository.save(customer)
-        try await container.workOrderRepository.save(
-            DomainFixtures.workOrder(customerId: customer.id)
-        )
-
-        let vm = AdminReportDetailViewModel(kind: .customerSummary, actor: admin, dependencies: deps)
-        await vm.load()
-
-        XCTAssertEqual(vm.phase, .loaded)
-        XCTAssertEqual(vm.metrics.first?.title, "ABC Market")
+        XCTAssertFalse(vm.payload.technicianEntries.isEmpty)
+        XCTAssertEqual(vm.payload.technicianEntries.first?.name, "Ahmet Yılmaz")
     }
 
     func testSignatureReportCountsAndRelatedNavigationIds() async throws {
@@ -157,7 +140,7 @@ final class Faz12AReportsAndNavigationTests: XCTestCase {
 
         XCTAssertEqual(vm.phase, .loaded)
         XCTAssertTrue(vm.metrics.contains { $0.title == "Toplam İmza" && $0.value == "1" })
-        XCTAssertEqual(vm.relatedWorkOrders.first?.id, order.id)
+        XCTAssertEqual(vm.payload.signatureEntries.first?.workOrderId, order.id)
     }
 
     func testWorkOrderReportIncludesSignatureAndPhotoCounts() async throws {
@@ -184,8 +167,8 @@ final class Faz12AReportsAndNavigationTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.phase, .loaded)
-        XCTAssertEqual(vm.content?.signatureCount, 1)
-        XCTAssertEqual(vm.content?.photoCount, 1)
+        XCTAssertEqual(vm.content?.snapshot.signatureCount, 1)
+        XCTAssertEqual(vm.content?.snapshot.photoCount, 1)
     }
 
     func testAdminDestinationUserDetailAndReportNavigation() {

@@ -51,6 +51,8 @@ enum SyncEntityRecordBridge {
             try await local.editRequests.save(value)
         case .notification(let value):
             try await local.notifications.save(value)
+        case .customerSatisfaction(let value):
+            try await local.customerSatisfactions.save(value)
         }
     }
 
@@ -72,9 +74,13 @@ enum SyncEntityRecordBridge {
             return .workOrder(try await repos.workOrders.fetch(id: WorkOrderID(entityId)))
         case .editRequest:
             return .editRequest(try await repos.editRequests.fetch(id: EditRequestID(entityId)))
+        case .customerSatisfaction:
+            return .customerSatisfaction(
+                try await repos.customerSatisfactions.fetch(id: CustomerSatisfactionID(entityId))
+            )
         case .workOrderNote:
             return .workOrderNote(
-                try await requireChild(
+                try requireChild(
                     try await repos.notes.list(for: parentWorkOrderId(parentId, reason: missingParentReason)),
                     id: entityId,
                     entity: "WorkOrderNote",
@@ -83,7 +89,7 @@ enum SyncEntityRecordBridge {
             )
         case .workOrderPhoto:
             return .workOrderPhoto(
-                try await requireChild(
+                try requireChild(
                     try await repos.photos.list(for: parentWorkOrderId(parentId, reason: missingParentReason)),
                     id: entityId,
                     entity: "WorkOrderPhoto",
@@ -92,7 +98,7 @@ enum SyncEntityRecordBridge {
             )
         case .workOrderLocation:
             return .workOrderLocation(
-                try await requireChild(
+                try requireChild(
                     try await repos.locations.list(for: parentWorkOrderId(parentId, reason: missingParentReason)),
                     id: entityId,
                     entity: "WorkOrderLocation",
@@ -101,7 +107,7 @@ enum SyncEntityRecordBridge {
             )
         case .workOrderStatusHistory:
             return .workOrderStatusHistory(
-                try await requireChild(
+                try requireChild(
                     try await repos.statusHistory.list(for: parentWorkOrderId(parentId, reason: missingParentReason)),
                     id: entityId,
                     entity: "WorkOrderStatusHistory",
@@ -110,7 +116,7 @@ enum SyncEntityRecordBridge {
             )
         case .signature:
             return .signature(
-                try await requireChild(
+                try requireChild(
                     try await repos.signatures.list(for: parentWorkOrderId(parentId, reason: missingParentReason)),
                     id: entityId,
                     entity: "Signature",

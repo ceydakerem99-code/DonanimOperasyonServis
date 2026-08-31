@@ -14,6 +14,7 @@ enum ReconciledRecord: Hashable, Sendable {
     case signature(Signature)
     case editRequest(EditRequest)
     case notification(AppNotification)
+    case customerSatisfaction(CustomerSatisfaction)
 
     var workOrderStatus: WorkOrderStatus? {
         if case .workOrder(let order) = self { return order.status }

@@ -6,43 +6,43 @@ struct AdminConflictListView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.m) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.m) {
                 Text("Çakışmalar yalnızca görüntülenir. Çözüm yetkisi operasyon yetkilisindedir.")
                     .font(AppFont.caption)
                     .foregroundStyle(AppColor.secondaryText)
 
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Çakışmalar yükleniyor...")
-                        .frame(minHeight: 200)
-
-                case .error(let message):
-                    ErrorBanner(title: "Liste yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
-                    }
-
-                case .empty:
-                    EmptyState(
-                        systemImage: "checkmark.seal",
-                        title: "Çözülmemiş çakışma yok",
-                        message: "Tüm senkron kayıtları güncel."
-                    )
-
-                case .loaded:
-                    ForEach(viewModel.rows) { row in
-                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                            Text("\(row.entityType) · \(row.entityId)")
-                                .font(AppFont.subtitle)
-                            Text("Tespit: \(row.detectedAt)")
-                                .font(AppFont.caption)
-                                .foregroundStyle(AppColor.secondaryText)
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "Çakışmalar yükleniyor...",
+                    errorTitle: "Liste yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        ForEach(viewModel.rows) { row in
+                            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                Text("\(row.entityType) · \(row.entityId)")
+                                    .font(AppFont.subtitle)
+                                Text("Tespit: \(row.detectedAt)")
+                                    .font(AppFont.caption)
+                                    .foregroundStyle(AppColor.secondaryText)
+                            }
+                            .padding(AppSpacing.m)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
+                            .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
                         }
-                        .padding(AppSpacing.m)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
-                        .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "checkmark.seal",
+                            title: "Çözülmemiş çakışma yok",
+                            message: "Tüm senkron kayıtları güncel."
+                        )
                     }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)

@@ -23,7 +23,9 @@ enum SyncErrorMapping {
         case .invalidData,
              .invalidStateTransition,
              .invalidEditRequestTransition,
+             .invalidCustomerSatisfactionTransition,
              .invalidEditRequest,
+             .invalidCustomerSatisfaction,
              .incompleteWorkOrder,
              .workOrderLocked,
              .invalidSyncStatusTransition:
@@ -36,6 +38,7 @@ enum SyncErrorMapping {
     private static func mapInfrastructure(_ underlying: String) -> SyncError {
         if underlying.contains("networkUnavailable") { return .networkUnavailable }
         if underlying.contains("permissionDenied") { return .unauthorized }
+        if underlying.contains("localMediaMissing") { return .invalidPayload }
         if underlying.contains("serverError") { return .serverError }
         if underlying.contains("notConfigured") { return .serverError }
         if underlying.contains("storageError") { return .serverError }

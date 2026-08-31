@@ -6,11 +6,22 @@ import Foundation
 actor FakeFirebaseStorageDataSource: FirebaseStorageDataSource {
 
     private var blobs: [String: Data] = [:]
+    private var uploadError: Error?
+    private(set) var uploadCallCount = 0
 
     init() {}
 
+    /// When set, the next `upload` calls fail until cleared.
+    func setUploadError(_ error: Error?) {
+        uploadError = error
+    }
+
     @discardableResult
     func upload(data: Data, to path: FirebaseStoragePath) async throws -> String {
+        uploadCallCount += 1
+        if let uploadError {
+            throw uploadError
+        }
         blobs[path.rawValue] = data
         return path.rawValue
     }
@@ -30,5 +41,9 @@ actor FakeFirebaseStorageDataSource: FirebaseStorageDataSource {
     /// `download`, which throws on a miss.
     func contains(_ path: FirebaseStoragePath) -> Bool {
         blobs[path.rawValue] != nil
+    }
+
+    func blob(at path: FirebaseStoragePath) -> Data? {
+        blobs[path.rawValue]
     }
 }

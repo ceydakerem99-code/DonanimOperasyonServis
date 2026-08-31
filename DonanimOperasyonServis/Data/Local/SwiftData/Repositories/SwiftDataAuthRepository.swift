@@ -47,6 +47,12 @@ struct SwiftDataAuthRepository: AuthRepository {
         try await store.setCurrentSessionUserId(nil, at: clock())
     }
 
+    func changePassword(currentPassword: String, newPassword: String) async throws {
+        _ = currentPassword
+        _ = newPassword
+        throw DomainError.authenticationFailed(.unauthorized)
+    }
+
     func authStateChanges() async -> AsyncStream<AuthSessionEvent> {
         AsyncStream { $0.finish() }
     }

@@ -12,6 +12,7 @@ struct WorkOrderCardData: Identifiable, Hashable {
     let deviceLabel: String?
     let status: AppStatus
     let priority: AppPriority
+    let timeStatus: WorkOrderTimeStatus?
     let plannedDateLabel: String
     let plannedTimeLabel: String?
     let technicianName: String?
@@ -37,15 +38,7 @@ struct WorkOrderCard: View {
                 footer
             }
             .padding(AppSpacing.m)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
-                    .fill(AppColor.elevatedSurface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
-                    .strokeBorder(AppColor.divider, lineWidth: 1)
-            )
+            .semanticAccentCard(role: data.priorityAccentRole, minHeight: nil)
             .contentShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -87,7 +80,12 @@ struct WorkOrderCard: View {
 
     private var footer: some View {
         HStack(alignment: .center, spacing: AppSpacing.m) {
-            PriorityBadge(priority: data.priority)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                PriorityBadge(priority: data.priority)
+                if let timeStatus = data.timeStatus {
+                    WorkOrderTimeStatusBadge(status: timeStatus)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: AppSpacing.xs) {
@@ -124,6 +122,9 @@ struct WorkOrderCard: View {
 
     private var accessibilityLabel: Text {
         var text = "\(data.workOrderNumber), \(data.customerName), \(data.workTypeLabel), öncelik \(data.priority.displayName), durum \(data.status.displayName)"
+        if let timeStatus = data.timeStatus {
+            text += ", zaman durumu \(timeStatus.displayName)"
+        }
         if let technicianName = data.technicianName {
             text += ", atanan teknisyen \(technicianName)"
         }
@@ -143,6 +144,7 @@ struct WorkOrderCard: View {
                 deviceLabel: "POS",
                 status: .assigned,
                 priority: .urgent,
+                timeStatus: .today,
                 plannedDateLabel: "18.08.2026",
                 plannedTimeLabel: "10:30",
                 technicianName: "Ahmet Yılmaz"
@@ -159,9 +161,27 @@ struct WorkOrderCard: View {
                 deviceLabel: "Yazıcı",
                 status: .inProgress,
                 priority: .normal,
+                timeStatus: .approaching,
                 plannedDateLabel: "18.08.2026",
                 plannedTimeLabel: "13:00",
                 technicianName: "Mehmet Kaya"
+            ),
+            onTap: {}
+        )
+
+        WorkOrderCard(
+            data: WorkOrderCardData(
+                id: "4",
+                workOrderNumber: "WO-1027",
+                customerName: "GHI Market - Acil + Gecikiyor",
+                workTypeLabel: "Arıza",
+                deviceLabel: "POS",
+                status: .inProgress,
+                priority: .urgent,
+                timeStatus: .delayed,
+                plannedDateLabel: "16.08.2026",
+                plannedTimeLabel: "09:00",
+                technicianName: "Ahmet Yılmaz"
             ),
             onTap: {}
         )
@@ -175,6 +195,7 @@ struct WorkOrderCard: View {
                 deviceLabel: nil,
                 status: .completed,
                 priority: .normal,
+                timeStatus: nil,
                 plannedDateLabel: "17.08.2026",
                 plannedTimeLabel: nil,
                 technicianName: "Ali Demir"

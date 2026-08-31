@@ -20,8 +20,8 @@ enum TechnicianWorkOrderActionMapping {
         case .arrived:
             return PrimaryAction(title: "İşe Başla", systemImage: "wrench.and.screwdriver", targetStatus: .inProgress, locationEvent: nil)
         case .paused:
-            return PrimaryAction(title: "Devam Et", systemImage: "play.circle", targetStatus: .inProgress, locationEvent: nil)
-        case .inProgress, .completed:
+            return PrimaryAction(title: "İşe Devam Et", systemImage: "play.circle", targetStatus: .inProgress, locationEvent: nil)
+        case .inProgress, .completed, .rejected:
             return nil
         }
     }
@@ -39,17 +39,19 @@ enum TechnicianWorkOrderActionMapping {
 }
 
 enum TechnicianWorkOrderListFilter: String, CaseIterable, Hashable, Sendable {
-    case all
+    case active
     case urgent
     case inProgress
     case paused
+    case completed
 
     var title: String {
         switch self {
-        case .all: return "Tümü"
+        case .active: return "Aktif İşler"
         case .urgent: return "Acil"
         case .inProgress: return "Devam Eden"
         case .paused: return "Beklemede"
+        case .completed: return "Tamamlanan"
         }
     }
 }

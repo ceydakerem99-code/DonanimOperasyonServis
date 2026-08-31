@@ -2,10 +2,16 @@ import SwiftUI
 
 struct TechnicianProfileView: View {
     let user: User
+    let accountService: ProfileAccountService
+    var onShowNotificationSettings: () -> Void = {}
+    var onShowChangePassword: () -> Void = {}
+    #if DEBUG
+    var onShowDebugTools: () -> Void = {}
+    #endif
     let onLogout: () -> Void
 
     var body: some View {
-        ScrollView {
+        AppShellTabScrollContent {
             VStack(alignment: .leading, spacing: AppSpacing.l) {
                 HStack(spacing: AppSpacing.m) {
                     Image(systemName: "person.crop.circle.fill")
@@ -14,10 +20,7 @@ struct TechnicianProfileView: View {
                     VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         Text(user.fullName).font(AppFont.title)
                         Text(UserRole.technician.displayName).font(AppFont.caption).foregroundStyle(AppColor.secondaryText)
-                        HStack(spacing: AppSpacing.xs) {
-                            Circle().fill(AppColor.success).frame(width: 8, height: 8)
-                            Text("Çevrimiçi").font(AppFont.label).foregroundStyle(AppColor.secondaryText)
-                        }
+                        ConnectionStatusIndicator()
                     }
                 }
                 profileCard("Kişisel Bilgiler") {
@@ -25,11 +28,21 @@ struct TechnicianProfileView: View {
                     InfoRow(title: "Rol", value: UserRole.technician.displayName, systemImage: "person.badge.key")
                 }
                 profileCard("Hesap") {
-                    ProfileUnsupportedRow(title: "Bildirim Ayarları", systemImage: "bell")
-                    ProfileUnsupportedRow(title: "Şifre Değiştir", systemImage: "lock")
-                    ProfileUnsupportedRow(title: "Dil", systemImage: "globe", value: "Türkçe")
+                    profileActionRow(title: "Bildirim Ayarları", systemImage: "bell", action: onShowNotificationSettings)
+                    profileActionRow(title: "Şifre Değiştir", systemImage: "lock", action: onShowChangePassword)
+
+                    InfoRow(title: "Dil", value: "Türkçe", systemImage: "globe")
                     InfoRow(title: "Uygulama Hakkında", value: "DOPS 0.1.0", systemImage: "info.circle")
                 }
+                #if DEBUG
+                profileCard("Geliştirici / Test") {
+                    profileActionRow(
+                        title: "Demo Veri & Mock GPS",
+                        systemImage: "wrench.and.screwdriver",
+                        action: onShowDebugTools
+                    )
+                }
+                #endif
                 Button(action: onLogout) {
                     Text("Çıkış Yap")
                         .font(AppFont.buttonLabel)
@@ -39,11 +52,17 @@ struct TechnicianProfileView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, AppSpacing.l)
-            .padding(.bottom, AppSpacing.xl)
         }
         .navigationTitle("Profil")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func profileActionRow(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ProfileNavigationRow(title: title, systemImage: systemImage)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private func profileCard<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -61,7 +80,12 @@ struct TechnicianProfileView: View {
 #if DEBUG
 #Preview("Technician Profile") {
     NavigationStack {
-        TechnicianProfileView(user: TechnicianPreviewData.technician, onLogout: {})
+        TechnicianProfileView(
+            user: TechnicianPreviewData.technician,
+            accountService: DIContainer.mock().makeProfileAccountService(),
+            onLogout: {}
+        )
+        .environment(\.appShellTabBarOccupiedHeight, CustomTabBarLayout.estimatedReservedHeight(hasCenterFAB: false))
     }
 }
 #endif

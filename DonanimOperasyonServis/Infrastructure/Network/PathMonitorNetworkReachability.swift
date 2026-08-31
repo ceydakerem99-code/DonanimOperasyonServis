@@ -42,6 +42,9 @@ final class PathMonitorNetworkReachability: NetworkReachabilityProviding, @unche
         guard shouldStart else { return }
 
         let monitor = NWPathMonitor()
+        let initialReachable = monitor.currentPath.status == .satisfied
+        snapshot.withLock { $0.isReachable = initialReachable }
+
         monitor.pathUpdateHandler = { [snapshot] path in
             let reachable = (path.status == .satisfied)
             let continuations = snapshot.withLock { state -> [AsyncStream<Bool>.Continuation] in

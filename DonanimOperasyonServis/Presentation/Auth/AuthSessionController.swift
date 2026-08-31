@@ -12,11 +12,16 @@ final class AuthSessionController {
     private(set) var isSigningIn = false
 
     private let authRepository: any AuthRepository
+    private let realtimeCoordinator: RealtimeCoordinator?
     private var observationTask: Task<Void, Never>?
     private var restoreSessionTask: Task<Void, Never>?
 
-    init(authRepository: any AuthRepository) {
+    init(
+        authRepository: any AuthRepository,
+        realtimeCoordinator: RealtimeCoordinator? = nil
+    ) {
         self.authRepository = authRepository
+        self.realtimeCoordinator = realtimeCoordinator
     }
 
     func start() async {
@@ -40,9 +45,11 @@ final class AuthSessionController {
             if let user = try await authRepository.restoreSession() {
                 guard !Task.isCancelled else { return }
                 state = .authenticated(user)
+                realtimeCoordinator?.handleAuthenticatedSession()
             } else {
                 guard !Task.isCancelled else { return }
                 state = .unauthenticated
+                realtimeCoordinator?.handleSignedOut()
             }
         } catch let error as DomainError {
             guard !Task.isCancelled else { return }
@@ -56,12 +63,18 @@ final class AuthSessionController {
     func signIn(email: String, password: String) async {
         isSigningIn = true
         defer { isSigningIn = false }
+        // Cancel any in-flight restore kicked off by the Auth listener so it
+        // cannot flash `.checkingSession` or sign the user out mid-login.
+        restoreSessionTask?.cancel()
+        restoreSessionTask = nil
         do {
             let user = try await authRepository.signIn(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
+            guard !Task.isCancelled else { return }
             state = .authenticated(user)
+            realtimeCoordinator?.handleAuthenticatedSession()
         } catch let error as DomainError {
             state = .authenticationError(error)
         } catch {
@@ -74,6 +87,7 @@ final class AuthSessionController {
         restoreSessionTask = nil
         do {
             try await authRepository.signOut()
+            realtimeCoordinator?.handleSignedOut()
             state = .unauthenticated
         } catch let error as DomainError {
             state = .authenticationError(error)
@@ -87,8 +101,10 @@ final class AuthSessionController {
         do {
             if let user = try await authRepository.refreshCurrentUser() {
                 state = .authenticated(user)
+                realtimeCoordinator?.handleAuthenticatedSession()
             } else {
                 state = .unauthenticated
+                realtimeCoordinator?.handleSignedOut()
             }
         } catch let error as DomainError {
             state = .authenticationError(error)
@@ -118,19 +134,25 @@ final class AuthSessionController {
     }
 
     private func handleAuthEvent(_ event: AuthSessionEvent) async {
+        // Login owns the transition while credentials are in flight. Listener
+        // restores here race with `signIn` and briefly bounce through
+        // `.checkingSession` → login (often after clearing the real error).
+        if isSigningIn { return }
+
         switch event {
         case .signedIn:
-            guard case .authenticated = state else {
-                restoreSessionTask?.cancel()
-                restoreSessionTask = Task { [weak self] in
-                    await self?.performRestoreSession(showChecking: true)
-                }
-                await restoreSessionTask?.value
-                return
+            if case .authenticated = state { return }
+            restoreSessionTask?.cancel()
+            restoreSessionTask = Task { [weak self] in
+                // Keep the current screen (usually login); avoid a full-screen
+                // "Oturum kontrol ediliyor..." flash on every Auth UID event.
+                await self?.performRestoreSession(showChecking: false)
             }
+            await restoreSessionTask?.value
         case .signedOut:
             restoreSessionTask?.cancel()
             restoreSessionTask = nil
+            realtimeCoordinator?.handleSignedOut()
             state = .unauthenticated
         }
     }

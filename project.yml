@@ -9,6 +9,14 @@ options:
   groupSortPosition: top
   transitivelyLinkDependencies: true
 
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -19,7 +27,7 @@ settings:
     ENABLE_MODULE_VERIFIER: NO
     ALWAYS_SEARCH_USER_PATHS: NO
     CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: YES
-  configs:
+    configs:
     Debug:
       SWIFT_OPTIMIZATION_LEVEL: "-Onone"
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG"
@@ -45,6 +53,45 @@ targets:
           - "**/.gitkeep"
           - "**/*.plist.example"
           - "Resources/Info.plist"
+          # Bundled explicitly below (gitignored; optional when absent).
+          - "Resources/Firebase/GoogleService-Info.plist"
+      # Firebase Console credential — must land in Copy Bundle Resources so
+      # FirebaseAppBootstrapper can find Bundle.main "GoogleService-Info.plist".
+      - path: DonanimOperasyonServis/Resources/Firebase/GoogleService-Info.plist
+        buildPhase: resources
+        optional: true
+      - path: DonanimOperasyonServis/Resources/Generated/RealtimeGatewayHost.dev
+        buildPhase: resources
+        optional: true
+    preBuildScripts:
+      - name: Generate Realtime Gateway Host
+        basedOnDependencyAnalysis: false
+        shell: /bin/sh
+        script: |
+          set -eu
+          GEN_DIR="${SRCROOT}/DonanimOperasyonServis/Resources/Generated"
+          XCCONFIG_DIR="${SRCROOT}/Config/Generated"
+          mkdir -p "${GEN_DIR}" "${XCCONFIG_DIR}"
+          if [ "${CONFIGURATION:-Debug}" != "Debug" ]; then
+            exit 0
+          fi
+          IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+          if [ -n "${IP}" ]; then
+            printf '%s\n' "${IP}" > "${GEN_DIR}/RealtimeGatewayHost.dev"
+            {
+              echo "// Generated at build time — do not commit"
+              echo "REALTIME_GATEWAY_HOST = ${IP}"
+            } > "${XCCONFIG_DIR}/RealtimeGatewayHost.xcconfig"
+          else
+            : > "${GEN_DIR}/RealtimeGatewayHost.dev"
+            {
+              echo "// Generated at build time — do not commit"
+              echo "REALTIME_GATEWAY_HOST ="
+            } > "${XCCONFIG_DIR}/RealtimeGatewayHost.xcconfig"
+          fi
+        outputFiles:
+          - $(SRCROOT)/Config/Generated/RealtimeGatewayHost.xcconfig
+          - $(SRCROOT)/DonanimOperasyonServis/Resources/Generated/RealtimeGatewayHost.dev
     settings:
       base:
         PRODUCT_NAME: DonanimOperasyonServis
@@ -60,10 +107,11 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        # Firebase Auth persists sessions in the Keychain. Unsigned
+        # simulator builds fail with FIRAuth ERROR_KEYCHAIN_ERROR (-34018).
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_ALLOWED: YES
         CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
     dependencies:
       - package: Firebase
         product: FirebaseAuth
@@ -90,8 +138,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.donanimoperasyonservis.app.tests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_ALLOWED: YES
         CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
     dependencies:
       - target: DonanimOperasyonServis

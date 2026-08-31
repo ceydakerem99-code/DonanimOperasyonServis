@@ -43,6 +43,9 @@ final class NewWorkOrderWizardViewModel {
     private(set) var fieldErrors: [NewWorkOrderValidationField: String] = [:]
     private(set) var customers: [Customer] = []
     private(set) var technicians: [User] = []
+    private(set) var workOrdersForAssignment: [WorkOrder] = []
+    private(set) var assignmentLocationContext: TechnicianAssignmentLocationContext?
+    private var locationsByWorkOrderId: [WorkOrderID: [WorkOrderLocation]] = [:]
     var customerSearchText = ""
     var technicianSearchText = ""
     private(set) var isOffline = false
@@ -59,23 +62,161 @@ final class NewWorkOrderWizardViewModel {
 
     var draft = NewWorkOrderDraft()
 
+    var showsTemplatePicker = false
+    private(set) var appliedTemplateId: WorkOrderTemplateID?
+    private(set) var appliedTemplateName: String?
+    var templateUnavailableMessage: String?
+    let templateListViewModel: WorkOrderTemplateListViewModel
+
     private let actor: User
     private let dependencies: OperatorDependencies
 
     init(actor: User, dependencies: OperatorDependencies) {
         self.actor = actor
         self.dependencies = dependencies
+        self.templateListViewModel = WorkOrderTemplateListViewModel(
+            actor: actor,
+            service: dependencies.workOrderTemplateService
+        )
     }
+
+    func openTemplatePicker() {
+        showsTemplatePicker = true
+    }
+
+    func applyTemplate(_ template: WorkOrderTemplate) {
+        let preservedCustomer = draft.customer
+        let preservedTechnician = draft.technician
+        let preservedScheduledDate = draft.scheduledDate
+        let preservedScheduledStart = draft.scheduledStart
+        let preservedScheduledEnd = draft.scheduledEnd
+        let preservedSerialNumber = draft.serialNumber
+
+        WorkOrderTemplateApplying.apply(template, to: &draft)
+
+        draft.customer = preservedCustomer
+        draft.technician = preservedTechnician
+        draft.scheduledDate = preservedScheduledDate
+        draft.scheduledStart = preservedScheduledStart
+        draft.scheduledEnd = preservedScheduledEnd
+        draft.serialNumber = preservedSerialNumber
+
+        appliedTemplateId = template.id
+        appliedTemplateName = template.name
+        templateUnavailableMessage = nil
+        fieldErrors.removeValue(forKey: .workType)
+        fieldErrors.removeValue(forKey: .deviceBrand)
+        fieldErrors.removeValue(forKey: .deviceModel)
+        showsTemplatePicker = false
+    }
+
+    var appliedTemplateFieldSummary: String? {
+        guard appliedTemplateId != nil else { return nil }
+        var parts: [String] = []
+        if let workType = draft.workType {
+            parts.append(workType.displayName)
+        }
+        parts.append(draft.deviceCategory.displayName)
+        if !draft.deviceBrand.trimmingCharacters(in: .whitespaces).isEmpty {
+            parts.append(draft.deviceBrand.trimmingCharacters(in: .whitespaces))
+        }
+        if !draft.deviceModel.trimmingCharacters(in: .whitespaces).isEmpty {
+            parts.append(draft.deviceModel.trimmingCharacters(in: .whitespaces))
+        }
+        parts.append(draft.priority.displayName)
+        if !draft.issueDescription.trimmingCharacters(in: .whitespaces).isEmpty {
+            parts.append("Açıklama dolu")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    func clearAppliedTemplate() {
+        appliedTemplateId = nil
+        appliedTemplateName = nil
+        templateUnavailableMessage = nil
+    }
+
+    func validateAppliedTemplateAvailability() async {
+        guard let templateId = appliedTemplateId else { return }
+        do {
+            _ = try await dependencies.workOrderTemplateService.fetch(actor: actor, id: templateId)
+        } catch {
+            clearAppliedTemplate()
+            templateUnavailableMessage = "Seçili şablon artık kullanılamıyor. Alanları manuel kontrol edin."
+        }
+    }
+
+    var templatePickerActor: User { actor }
+    var templatePickerService: OperatorWorkOrderTemplateService { dependencies.workOrderTemplateService }
 
     func loadSelections() async {
         isOffline = !(await dependencies.networkReachability.isReachable)
+        await reloadCustomersFromLocalCache()
+        await reloadTechniciansFromLocalCache()
+        await reloadWorkOrdersForAssignment()
+        await reloadAssignmentLocations()
+        await validateAppliedTemplateAvailability()
+    }
+
+    private func reloadAssignmentLocations() async {
+        let orderIds = workOrdersForAssignment.map(\.id)
+        locationsByWorkOrderId = await TechnicianAssignmentLocationLoader.loadLocations(
+            for: orderIds,
+            repository: dependencies.workOrderLocationRepository
+        )
+        rebuildAssignmentLocationContext()
+    }
+
+    private func rebuildAssignmentLocationContext() {
+        assignmentLocationContext = TechnicianAssignmentLocationBuilder.buildContext(
+            workOrderSite: TechnicianAssignmentLocationBuilder.resolveWorkOrderSite(
+                customerId: draft.customer?.id,
+                workOrderId: nil,
+                orders: workOrdersForAssignment,
+                locationsByWorkOrderId: locationsByWorkOrderId
+            ),
+            technicians: technicians,
+            locationsByWorkOrderId: locationsByWorkOrderId
+        )
+    }
+
+    private func reloadWorkOrdersForAssignment() async {
+        workOrdersForAssignment = (try? await dependencies.getWorkOrders.execute(
+            actor: actor,
+            filter: .all
+        )) ?? []
+    }
+
+    private func reloadCustomersFromLocalCache() async {
         do {
             customers = try await dependencies.customerRepository.list(searchText: nil)
+        } catch is CancellationError {
+            return
+        } catch {
+            customers = []
+        }
+
+        if await dependencies.networkReachability.isReachable {
+            await dependencies.localDirectoryCacheRefresh.refreshCustomers()
+            if let refreshed = try? await dependencies.customerRepository.list(searchText: nil) {
+                customers = refreshed
+            }
+        }
+    }
+
+    private func reloadTechniciansFromLocalCache() async {
+        do {
             technicians = try await dependencies.userRepository.list(role: .technician, isActive: true)
         } catch is CancellationError {
             return
         } catch {
-            phase = .error("Seçim listeleri yüklenemedi.")
+            technicians = []
+        }
+
+        await dependencies.localDirectoryCacheRefresh.refreshTechnicians()
+
+        if let refreshed = try? await dependencies.userRepository.list(role: .technician, isActive: true) {
+            technicians = refreshed
         }
     }
 
@@ -123,6 +264,9 @@ final class NewWorkOrderWizardViewModel {
         guard validateCurrentStep() else { return }
         if currentStep < Self.totalSteps {
             currentStep += 1
+            if currentStep == 5 {
+                Task { await reloadAssignmentLocations() }
+            }
         }
     }
 
@@ -140,6 +284,7 @@ final class NewWorkOrderWizardViewModel {
     func selectCustomer(_ customer: Customer) {
         draft.customer = customer
         fieldErrors.removeValue(forKey: .customer)
+        rebuildAssignmentLocationContext()
     }
 
     func selectTechnician(_ user: User) {
@@ -157,11 +302,37 @@ final class NewWorkOrderWizardViewModel {
     }
 
     var filteredTechnicians: [User] {
-        let needle = technicianSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return technicians }
-        return technicians.filter {
-            $0.fullName.lowercased().contains(needle) || $0.email.lowercased().contains(needle)
-        }
+        let filtered = TechnicianAssignmentSupport.filterTechniciansByName(
+            technicians,
+            query: technicianSearchText
+        )
+        return TechnicianAssignmentSupport.sortedTechniciansForAssignment(
+            filtered,
+            orders: workOrdersForAssignment,
+            locationContext: assignmentLocationContext
+        )
+    }
+
+    func locationLabel(for technician: User) -> String? {
+        guard assignmentLocationContext != nil else { return nil }
+        return assignmentLocationContext?.assignmentLocationLabel(for: technician.id)
+    }
+
+    func workingStatus(for technician: User) -> TechnicianWorkingStatus {
+        TechnicianAssignmentSupport.workingStatus(for: technician.id, orders: workOrdersForAssignment)
+    }
+
+    func workload(for technician: User) -> TechnicianWorkloadCounts {
+        TechnicianAssignmentSupport.workload(for: technician.id, orders: workOrdersForAssignment)
+    }
+
+    func isRecommended(_ technician: User) -> Bool {
+        TechnicianAssignmentSupport.isRecommended(
+            technicianId: technician.id,
+            among: technicians,
+            orders: workOrdersForAssignment,
+            locationContext: assignmentLocationContext
+        )
     }
 
     func submit() async {

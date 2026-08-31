@@ -18,6 +18,7 @@ final class OperatorDashboardViewModelTests: XCTestCase {
         let order = DomainFixtures.workOrder(
             customerId: customer.id,
             priority: .urgent,
+            scheduledDate: Date(),
             status: .assigned
         )
         try await container.workOrderRepository.save(order)
@@ -26,8 +27,8 @@ final class OperatorDashboardViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.phase, .loaded)
-        XCTAssertEqual(vm.summary.total, 1)
-        XCTAssertEqual(vm.summary.assigned, 1)
+        XCTAssertEqual(vm.operationsKPIs.openWorkOrders, 1)
+        XCTAssertEqual(vm.operationsKPIs.urgentWorkOrders, 1)
         XCTAssertEqual(vm.urgentOrders.count, 1)
     }
 
@@ -41,7 +42,7 @@ final class OperatorDashboardViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.phase, .empty)
-        XCTAssertEqual(vm.summary.total, 0)
+        XCTAssertEqual(vm.operationsKPIs.openWorkOrders, 0)
     }
 
     func testDashboardErrorWhenUnauthorizedRole() async throws {
@@ -272,6 +273,30 @@ final class NewWorkOrderWizardViewModelTests: XCTestCase {
         XCTAssertFalse(ops.isEmpty)
         XCTAssertTrue(ops.contains { $0.operationType == .create })
     }
+
+    func testTechnicianSearchMatchesMehmet() async throws {
+        let container = DIContainer.mock()
+        let operatorUser = DomainFixtures.operatorUser()
+        let mehmet = DomainFixtures.mehmetTechnician()
+        let deps = container.makeOperatorDependencies()
+        try await deps.userRepository.save(operatorUser)
+        try await deps.userRepository.save(mehmet)
+
+        let vm = NewWorkOrderWizardViewModel(actor: operatorUser, dependencies: deps)
+        await vm.loadSelections()
+
+        vm.technicianSearchText = "Mehmet"
+        XCTAssertEqual(vm.filteredTechnicians.map(\.id), [DomainFixtures.mehmetTechnicianUID])
+
+        vm.technicianSearchText = "kerem"
+        XCTAssertEqual(vm.filteredTechnicians.map(\.id), [DomainFixtures.mehmetTechnicianUID])
+
+        vm.technicianSearchText = "mehmetkerem"
+        XCTAssertTrue(vm.filteredTechnicians.isEmpty)
+
+        vm.technicianSearchText = ""
+        XCTAssertTrue(vm.technicians.contains(where: { $0.id == DomainFixtures.mehmetTechnicianUID }))
+    }
 }
 
 @MainActor
@@ -359,6 +384,7 @@ final class OperatorWorkOrderServiceTests: XCTestCase {
             entityId: history[0].id
         )
         XCTAssertFalse(historyOps.isEmpty)
+        XCTAssertEqual(historyOps.first?.payloadReference, created.id.rawValue)
     }
 }
 

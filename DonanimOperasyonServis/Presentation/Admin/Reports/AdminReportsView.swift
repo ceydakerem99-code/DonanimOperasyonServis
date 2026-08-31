@@ -9,7 +9,9 @@ struct AdminReportsView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: AppSpacing.m) {
                 ForEach(AdminReportKind.allCases) { kind in
-                    reportTile(kind)
+                    ReportHubTile(kind: kind) {
+                        onSelectReport(kind)
+                    }
                 }
             }
             .padding(.horizontal, AppSpacing.l)
@@ -17,34 +19,6 @@ struct AdminReportsView: View {
         }
         .navigationTitle("Raporlar")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func reportTile(_ kind: AdminReportKind) -> some View {
-        Button {
-            onSelectReport(kind)
-        } label: {
-            VStack(alignment: .leading, spacing: AppSpacing.s) {
-                Image(systemName: kind.systemImage)
-                    .font(.system(size: 28))
-                    .foregroundStyle(AppColor.brandPrimary)
-                Text(kind.title)
-                    .font(AppFont.subtitle)
-                    .foregroundStyle(AppColor.primaryText)
-                    .multilineTextAlignment(.leading)
-                Text(kind.subtitle)
-                    .font(AppFont.caption)
-                    .foregroundStyle(AppColor.secondaryText)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
-            }
-            .padding(AppSpacing.m)
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
-            .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(kind.title)
-        .accessibilityHint(kind.subtitle)
     }
 }
 

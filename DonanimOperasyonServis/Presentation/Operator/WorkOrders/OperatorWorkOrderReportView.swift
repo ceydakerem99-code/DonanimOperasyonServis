@@ -2,95 +2,89 @@ import SwiftUI
 
 struct OperatorWorkOrderReportView: View {
     let workOrderId: WorkOrderID
-    @State private var viewModel: OperatorWorkOrderDetailViewModel?
+    let dependencies: OperatorDependencies
+    let actor: User
+    @State private var viewModel: OperatorWorkOrderDetailViewModel
+    @State private var pdfFileURL: URL?
+    @State private var isExportingPDF = false
+
+    init(workOrderId: WorkOrderID, dependencies: OperatorDependencies, actor: User) {
+        self.workOrderId = workOrderId
+        self.dependencies = dependencies
+        self.actor = actor
+        _viewModel = State(initialValue: OperatorWorkOrderDetailViewModel(
+            workOrderId: workOrderId,
+            actor: actor,
+            dependencies: dependencies
+        ))
+    }
 
     var body: some View {
-        Group {
-            if let viewModel {
-                reportContent(viewModel)
-            } else {
-                LoadingView(message: "Rapor yükleniyor...")
-            }
-        }
-        .navigationTitle("İş Emri Raporu")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await viewModel?.load()
-        }
+        reportContent(viewModel)
+            .navigationTitle("İş Emri Raporu")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { pdfToolbar }
+            .id(workOrderId)
+            .task(id: workOrderId) { await viewModel.load() }
     }
 
     @ViewBuilder
     private func reportContent(_ viewModel: OperatorWorkOrderDetailViewModel) -> some View {
-        switch viewModel.phase {
-        case .loading:
-            LoadingView(message: "Rapor yükleniyor...")
-        case .error(let message):
-            ErrorBanner(title: "Rapor yüklenemedi", message: message) {
-                Task { await viewModel.load() }
-            }
-            .padding(AppSpacing.l)
-        case .loaded:
+        AsyncLoadContainerView(
+            isLoading: viewModel.phase == .loading,
+            showsLoadingIndicator: viewModel.showsLoadingIndicator,
+            hasCachedContent: viewModel.hasCachedContent,
+            errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+            isEmpty: false,
+            loadingMessage: "Rapor yükleniyor...",
+            errorTitle: "Rapor yüklenemedi",
+            onRetry: { Task { await viewModel.load() } }
+        ) {
             if let content = viewModel.content {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: AppSpacing.l) {
-                        HStack {
-                            Text(content.workOrder.workOrderNumber)
-                                .font(AppFont.title)
-                            Spacer()
-                            StatusChip(status: WorkOrderPresentationMapping.appStatus(from: content.workOrder.status))
-                        }
-
-                        InfoRow(title: "Müşteri", value: content.customer.name, systemImage: "building.2")
-                        InfoRow(
-                            title: "Cihaz",
-                            value: "\(content.workOrder.deviceCategory.displayName) · \(content.workOrder.deviceBrand)",
-                            systemImage: "creditcard"
-                        )
-
-                        if content.workOrder.status == .completed, let completedAt = content.workOrder.completedAt {
-                            InfoRow(
-                                title: "Tamamlanma",
-                                value: WorkOrderPresentationMapping.formatDateTime(completedAt),
-                                systemImage: "checkmark.seal"
-                            )
-                        }
-
-                        SectionHeader(title: "Ekler")
-                        reportAttachmentRow(title: "Servis Notları", count: content.notes.count, systemImage: "note.text")
-                        reportAttachmentRow(title: "Fotoğraflar", count: 0, systemImage: "photo")
-                        reportAttachmentRow(title: "GPS Kayıtları", count: 0, systemImage: "location")
-                        reportAttachmentRow(title: "İmzalar", count: 0, systemImage: "signature")
-                    }
+                    WorkOrderReportDetailSections(
+                        snapshot: content.reportSnapshot,
+                        mediaLoader: WorkOrderMediaLoader(storage: dependencies.storageDataSource)
+                    )
                     .padding(AppSpacing.l)
                 }
             }
         }
     }
 
-    private func reportAttachmentRow(title: String, count: Int, systemImage: String) -> some View {
-        HStack {
-            Image(systemName: systemImage)
-                .foregroundStyle(AppColor.brandPrimary)
-            Text(title)
-                .font(AppFont.body)
-            Spacer()
-            Text("\(count)")
-                .font(AppFont.caption)
-                .foregroundStyle(AppColor.secondaryText)
+    @ToolbarContentBuilder
+    private var pdfToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            if let pdfFileURL {
+                ShareLink(item: pdfFileURL) {
+                    Label("PDF Paylaş", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Button {
+                    Task { await exportPDF() }
+                } label: {
+                    if isExportingPDF {
+                        ProgressView()
+                    } else {
+                        Label("PDF", systemImage: "doc.richtext")
+                    }
+                }
+                .disabled(viewModel.content == nil || isExportingPDF)
+            }
         }
-        .padding(AppSpacing.m)
-        .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
     }
-}
 
-extension OperatorWorkOrderReportView {
-    init(workOrderId: WorkOrderID, dependencies: OperatorDependencies, actor: User) {
-        self.workOrderId = workOrderId
-        _viewModel = State(initialValue: OperatorWorkOrderDetailViewModel(
-            workOrderId: workOrderId,
-            actor: actor,
-            dependencies: dependencies
-        ))
+    private func exportPDF() async {
+        guard let snapshot = viewModel.content?.reportSnapshot, !isExportingPDF else { return }
+        isExportingPDF = true
+        defer { isExportingPDF = false }
+        let loader = WorkOrderMediaLoader(storage: dependencies.storageDataSource)
+        let media = await WorkOrderReportPDFExporter.collectMedia(snapshot: snapshot, loader: loader)
+        let data = WorkOrderReportPDFExporter.makePDF(snapshot: snapshot, media: media)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(snapshot.workOrder.workOrderNumber)-rapor.pdf")
+        try? data.write(to: url, options: .atomic)
+        pdfFileURL = url
     }
 }
 

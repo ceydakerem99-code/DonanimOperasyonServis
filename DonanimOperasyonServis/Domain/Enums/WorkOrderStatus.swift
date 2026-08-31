@@ -9,6 +9,7 @@ import Foundation
 enum WorkOrderStatus: String, CaseIterable, Hashable, Sendable, Codable {
     case assigned
     case accepted
+    case rejected
     case enRoute
     case arrived
     case inProgress
@@ -21,6 +22,7 @@ extension WorkOrderStatus {
         switch self {
         case .assigned:   return "Atandı"
         case .accepted:   return "Kabul Edildi"
+        case .rejected:   return "Reddedildi"
         case .enRoute:    return "Yola Çıkıldı"
         case .arrived:    return "Müşteriye Varıldı"
         case .inProgress: return "İşlemde"
@@ -29,8 +31,17 @@ extension WorkOrderStatus {
         }
     }
 
-    /// A completed work order is locked from any further normal
-    /// state-machine transitions. Only approved edit requests can
-    /// modify specific fields.
-    var isTerminal: Bool { self == .completed }
+    /// A completed or rejected work order is locked from any further
+    /// normal state-machine transitions.
+    var isTerminal: Bool { self == .completed || self == .rejected }
+
+    /// Technician is actively working a job in the field (not merely assigned).
+    var isActivelyInField: Bool {
+        switch self {
+        case .accepted, .enRoute, .arrived, .inProgress:
+            return true
+        case .assigned, .rejected, .paused, .completed:
+            return false
+        }
+    }
 }

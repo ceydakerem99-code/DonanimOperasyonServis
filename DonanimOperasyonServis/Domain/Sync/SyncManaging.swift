@@ -12,6 +12,11 @@ protocol SyncManaging: Sendable {
     @discardableResult
     func syncPending(now: Date) async throws -> SyncDrainOutcome
     func sync(operation: SyncOperation, now: Date) async throws
+    /// Last drain timing report (nil before the first `syncPending`).
+    func lastDrainReport() async -> SyncDrainReport?
+    /// Live queue counts for the header badge. Independent of whether
+    /// the last drain's telemetry counters (`failed` / `held`) changed.
+    func issueSnapshot() async throws -> SyncIssueSnapshot
 }
 
 extension SyncManaging {

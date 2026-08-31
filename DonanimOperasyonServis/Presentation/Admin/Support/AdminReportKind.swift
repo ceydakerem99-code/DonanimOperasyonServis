@@ -4,10 +4,13 @@ import Foundation
 enum AdminReportKind: String, Hashable, Sendable, CaseIterable, Identifiable {
     case workOrders
     case technicianPerformance
-    case customerSummary
     case pauseReasons
     case signatures
     case photos
+    case customerAnalytics
+    case customerSatisfaction
+    case faultRecurrence
+    case dailyOperations
 
     var id: String { rawValue }
 
@@ -15,10 +18,13 @@ enum AdminReportKind: String, Hashable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .workOrders: return "İş Emri Raporu"
         case .technicianPerformance: return "Teknisyen Performansı"
-        case .customerSummary: return "Müşteri Raporu"
         case .pauseReasons: return "Bekleme Nedeni Raporu"
         case .signatures: return "İmza Raporu"
         case .photos: return "Fotoğraf Raporu"
+        case .customerAnalytics: return "Müşteri Analizi"
+        case .customerSatisfaction: return "Müşteri Memnuniyeti"
+        case .faultRecurrence: return "Arıza Tekrar Analizi"
+        case .dailyOperations: return "Günlük Operasyon Raporu"
         }
     }
 
@@ -26,10 +32,13 @@ enum AdminReportKind: String, Hashable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .workOrders: return "doc.text"
         case .technicianPerformance: return "person.3"
-        case .customerSummary: return "building.2"
         case .pauseReasons: return "pause.circle"
         case .signatures: return "signature"
         case .photos: return "photo"
+        case .customerAnalytics: return "chart.line.uptrend.xyaxis"
+        case .customerSatisfaction: return "star.bubble"
+        case .faultRecurrence: return "arrow.triangle.2.circlepath"
+        case .dailyOperations: return "calendar.badge.clock"
         }
     }
 
@@ -37,10 +46,13 @@ enum AdminReportKind: String, Hashable, Sendable, CaseIterable, Identifiable {
         switch self {
         case .workOrders: return "Durum dağılımı ve tamamlanma özeti"
         case .technicianPerformance: return "Teknisyen bazlı iş yükü"
-        case .customerSummary: return "Müşteri bazlı iş emri özeti"
         case .pauseReasons: return "Duraklatma nedenleri dağılımı"
         case .signatures: return "Tamamlanan imza kayıtları"
         case .photos: return "Yüklenen fotoğraf özeti"
+        case .customerAnalytics: return "Müşteri geçmişi ve işlem özeti"
+        case .customerSatisfaction: return "Puan dağılımı ve son değerlendirmeler"
+        case .faultRecurrence: return "Tekrarlayan arıza ve cihaz geçmişi"
+        case .dailyOperations: return "Seçilen güne ait operasyon özeti"
         }
     }
 }

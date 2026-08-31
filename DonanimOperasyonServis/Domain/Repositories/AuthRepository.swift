@@ -20,6 +20,10 @@ protocol AuthRepository: Sendable {
     func signIn(email: String, password: String) async throws -> User
     func signOut() async throws
 
+    /// Re-authenticates with the current password, then updates the
+    /// Firebase Auth password. Never persists the password in Firestore.
+    func changePassword(currentPassword: String, newPassword: String) async throws
+
     /// Observes provider session changes (login, logout, token
     /// expiry). The stream's first value reflects the current UID.
     func authStateChanges() async -> AsyncStream<AuthSessionEvent>

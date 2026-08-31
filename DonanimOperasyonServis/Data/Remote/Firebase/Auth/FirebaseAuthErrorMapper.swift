@@ -19,6 +19,10 @@ enum FirebaseAuthErrorMapper {
                  .invalidUserToken,
                  .userTokenExpired:
                 return .authenticationFailed(.invalidCredentials)
+            case .weakPassword:
+                return .authenticationFailed(.weakPassword)
+            case .requiresRecentLogin:
+                return .authenticationFailed(.requiresRecentLogin)
             case .networkError:
                 return .authenticationFailed(.networkUnavailable)
             case .tooManyRequests:
@@ -26,7 +30,12 @@ enum FirebaseAuthErrorMapper {
             case .userDisabled,
                  .operationNotAllowed:
                 return .authenticationFailed(.unauthorized)
+            case .keychainError:
+                return .authenticationFailed(.keychainUnavailable)
             default:
+                AppLogger.auth.error(
+                    "Unmapped Firebase Auth error code=\(nsError.code) domain=\(nsError.domain, privacy: .public) desc=\(nsError.localizedDescription, privacy: .public)"
+                )
                 return .authenticationFailed(.unknown)
             }
         }

@@ -2,10 +2,19 @@ import SwiftUI
 
 struct OperatorProfileView: View {
     let user: User
+    let accountService: ProfileAccountService
+    var onShowReports: () -> Void = {}
+    var onShowConflicts: () -> Void = {}
+    var onShowCustomers: () -> Void = {}
+    var onShowNotificationSettings: () -> Void = {}
+    var onShowChangePassword: () -> Void = {}
+    #if DEBUG
+    var onShowDebugTools: () -> Void = {}
+    #endif
     let onLogout: () -> Void
 
     var body: some View {
-        ScrollView {
+        AppShellTabScrollContent {
             VStack(alignment: .leading, spacing: AppSpacing.l) {
                 profileHeader
 
@@ -18,12 +27,49 @@ struct OperatorProfileView: View {
                     InfoRow(title: "Rol", value: UserRole.operator.displayName, systemImage: "person.badge.key")
                 }
 
+                profileCard(title: "Operasyon") {
+                    profileActionRow(
+                        title: "Müşteriler",
+                        systemImage: "building.2",
+                        action: onShowCustomers
+                    )
+                    profileActionRow(
+                        title: "Raporlar",
+                        systemImage: "chart.bar.doc.horizontal",
+                        action: onShowReports
+                    )
+                    profileActionRow(
+                        title: "Senkron Çakışmaları",
+                        systemImage: "exclamationmark.triangle",
+                        action: onShowConflicts
+                    )
+                }
+
                 profileCard(title: "Hesap") {
-                    ProfileUnsupportedRow(title: "Bildirim Ayarları", systemImage: "bell")
-                    ProfileUnsupportedRow(title: "Şifre Değiştir", systemImage: "lock")
-                    ProfileUnsupportedRow(title: "Dil", systemImage: "globe", value: "Türkçe")
+                    profileActionRow(
+                        title: "Bildirim Ayarları",
+                        systemImage: "bell",
+                        action: onShowNotificationSettings
+                    )
+                    profileActionRow(
+                        title: "Şifre Değiştir",
+                        systemImage: "lock",
+                        action: onShowChangePassword
+                    )
+
+                    InfoRow(title: "Dil", value: "Türkçe", systemImage: "globe")
                     InfoRow(title: "Uygulama Hakkında", value: "DOPS 0.1.0", systemImage: "info.circle")
                 }
+
+                #if DEBUG
+                profileCard(title: "Geliştirici / Test") {
+                    profileActionRow(
+                        title: "Demo Veri & Sync",
+                        systemImage: "wrench.and.screwdriver",
+                        action: onShowDebugTools
+                    )
+                }
+                #endif
 
                 Button(action: onLogout) {
                     Text("Çıkış Yap")
@@ -35,8 +81,6 @@ struct OperatorProfileView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Çıkış Yap")
             }
-            .padding(.horizontal, AppSpacing.l)
-            .padding(.bottom, AppSpacing.xl)
         }
         .navigationTitle("Profil")
         .navigationBarTitleDisplayMode(.inline)
@@ -54,12 +98,7 @@ struct OperatorProfileView: View {
                 Text(UserRole.operator.displayName)
                     .font(AppFont.caption)
                     .foregroundStyle(AppColor.secondaryText)
-                HStack(spacing: AppSpacing.xs) {
-                    Circle().fill(AppColor.success).frame(width: 8, height: 8)
-                    Text("Çevrimiçi")
-                        .font(AppFont.label)
-                        .foregroundStyle(AppColor.secondaryText)
-                }
+                ConnectionStatusIndicator()
             }
         }
         .padding(.top, AppSpacing.s)
@@ -76,12 +115,25 @@ struct OperatorProfileView: View {
         .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card).strokeBorder(AppColor.divider))
     }
+
+    private func profileActionRow(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ProfileNavigationRow(title: title, systemImage: systemImage)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
 }
 
 #if DEBUG
 #Preview("Profile") {
     NavigationStack {
-        OperatorProfileView(user: OperatorPreviewData.operatorUser, onLogout: {})
+        OperatorProfileView(
+            user: OperatorPreviewData.operatorUser,
+            accountService: DIContainer.mock().makeProfileAccountService(),
+            onLogout: {}
+        )
+        .environment(\.appShellTabBarOccupiedHeight, CustomTabBarLayout.estimatedReservedHeight(hasCenterFAB: true))
     }
 }
 #endif

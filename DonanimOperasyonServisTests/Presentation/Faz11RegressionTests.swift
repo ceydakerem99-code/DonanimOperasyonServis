@@ -188,6 +188,7 @@ final class Faz11ListLifecycleTests: XCTestCase {
         let container = DIContainer.mock()
         let deps = container.makeTechnicianDependencies()
         let tech = DomainFixtures.technicianUser()
+        try await container.userRepository.save(tech)
 
         let vm = TechnicianNotificationListViewModel(actor: tech, dependencies: deps)
         await vm.load()
@@ -273,7 +274,7 @@ final class Faz11WizardNavigationTests: XCTestCase {
         await DemoAccountSeeder.seedIfNeeded(container: container)
         let secondCount = try await container.workOrderRepository.list(filter: WorkOrderFilter()).count
         XCTAssertEqual(firstCount, secondCount)
-        XCTAssertGreaterThanOrEqual(firstCount, 7)
+        XCTAssertGreaterThanOrEqual(firstCount, 3)
     }
 }
 

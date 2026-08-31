@@ -92,4 +92,23 @@ enum CompletionRequirements {
             return .failure(MissingRequirements(items: missing))
         }
     }
+
+    /// Gaps that must be cleared **before** the technician taps
+    /// Tamamla. Excludes `.missingLocation(.completed)` because that
+    /// sample is captured as part of the complete action itself
+    /// (`completeWork` → GPS `.completed` → `CompleteWorkOrderUseCase`).
+    ///
+    /// Domain completion still runs the full `check(_:)` after that
+    /// sample exists.
+    static func missingBeforeCompleteAction(_ context: CompletionContext) -> [MissingRequirement] {
+        switch check(context) {
+        case .success:
+            return []
+        case .failure(let failure):
+            return failure.items.filter { item in
+                if case .missingLocation(.completed) = item { return false }
+                return true
+            }
+        }
+    }
 }

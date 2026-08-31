@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         AppLogger.app.info("Application did finish launching")
         #if DEBUG
-        Task { await DemoAccountSeeder.seedIfNeeded(container: container) }
+        Task { await DemoDataSeeder.seedIfNeeded(container: container) }
         #endif
         let coordinator = container.syncCoordinator
         container.backgroundSyncScheduler.register { handle in

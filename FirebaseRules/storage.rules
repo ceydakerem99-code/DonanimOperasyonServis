@@ -1,36 +1,109 @@
 rules_version = '2';
 
 // =============================================================================
-// Firebase Storage Security Rules — v1 skeleton (Phase 4)
+// Firebase Storage Security Rules — v1 (Faz 13C)
 // =============================================================================
 //
-// STATUS: NOT production-ready. Authentication is Phase 6.
-// Until then every object is denied. Path layout MUST stay in sync
-// with `FirebaseStoragePath`:
-//
+// Paths MUST match FirebaseStoragePath:
 //   workOrders/{workOrderId}/photos/{photoId}
 //   workOrders/{workOrderId}/signatures/{signatureId}
 //
-// TODO(Phase 6):
-//   - require request.auth != null
-//   - technician may upload/read photos and signatures for work
-//     orders assigned to them
-//   - operator may read all objects
-//   - size / content-type limits (images only, e.g. < 8 MB)
+// Parent WorkOrder ACL is loaded from Firestore (assignedTechnicianId, status).
+// Role is loaded from users/{request.auth.uid}.role.
 // =============================================================================
 
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userExists() {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(uid()));
+    }
+
+    function callerRole() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(uid())
+      ).data.role;
+    }
+
+    function isAdmin() {
+      return userExists() && callerRole() == 'admin';
+    }
+
+    function isOperator() {
+      return userExists() && callerRole() == 'operator';
+    }
+
+    function isTechnician() {
+      return userExists() && callerRole() == 'technician';
+    }
+
+    function workOrderDoc(workOrderId) {
+      return firestore.get(
+        /databases/(default)/documents/workOrders/$(workOrderId)
+      );
+    }
+
+    function workOrderData(workOrderId) {
+      return workOrderDoc(workOrderId).data;
+    }
+
+    function isAssignedTechnician(workOrderId) {
+      return workOrderData(workOrderId).assignedTechnicianId == uid();
+    }
+
+    function workOrderIsCompleted(workOrderId) {
+      return workOrderData(workOrderId).status == 'completed';
+    }
+
+    function canReadMedia(workOrderId) {
+      return isOperator()
+        || isAdmin()
+        || (isTechnician() && isAssignedTechnician(workOrderId));
+    }
+
+    /// Upload only while assigned technician can still act (not completed).
+    function canUploadMedia(workOrderId) {
+      return isTechnician()
+        && isAssignedTechnician(workOrderId)
+        && !workOrderIsCompleted(workOrderId);
+    }
+
+    function isValidImageUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Default deny for any other path.
     match /{allPaths=**} {
       allow read, write: if false;
     }
 
     match /workOrders/{workOrderId}/photos/{photoId} {
-      allow read, write: if false;
+      allow read: if canReadMedia(workOrderId);
+
+      allow create, update: if canUploadMedia(workOrderId)
+        && isValidImageUpload();
+
+      allow delete: if false;
     }
 
     match /workOrders/{workOrderId}/signatures/{signatureId} {
-      allow read, write: if false;
+      allow read: if canReadMedia(workOrderId);
+
+      allow create, update: if canUploadMedia(workOrderId)
+        && isValidImageUpload();
+
+      allow delete: if false;
     }
   }
 }

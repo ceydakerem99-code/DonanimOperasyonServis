@@ -111,8 +111,7 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
 
         await env.coordinator.handleBecomeActive(now: now)
 
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
     }
@@ -123,6 +122,7 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
         await env.sync.setOutcome(.deferredOffline)
         await env.coordinator.handleBecomeActive(now: now)
         await env.sync.setOutcome(.completed)
+        await env.reachability.setReachable(true)
         await env.coordinator.handleNetworkBecameReachable(now: now.addingTimeInterval(5))
         let calls = await env.sync.syncPendingCalls
         XCTAssertEqual(calls, 2)
@@ -142,6 +142,142 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
         XCTAssertGreaterThanOrEqual(calls, 1)
+    }
+
+    func testOfflineToOnlineAutomaticallyDrainsPendingSync() async throws {
+        let env = try await makeIntegrationEnvironment(online: false)
+        let customer = DomainFixtures.customer()
+        try await env.local.customers.save(customer)
+        let operation = try SyncOperation.pending(
+            id: SyncOperationID("op-offline-online"),
+            entityType: .customer,
+            entityId: customer.id.rawValue,
+            operationType: .create,
+            createdAt: now,
+            localVersion: 1
+        )
+        _ = try await env.queue.enqueue(operation)
+
+        await env.coordinator.startObservingReachability()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        await env.reachability.setReachable(true)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
+        let writes = await env.probe.recordedWrites()
+        XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
+    }
+
+    func testDeferredNetworkReachableDrainRunsAfterInFlightDrain() async {
+        let env = makeEnvironment(delaySync: true)
+        let coordinator = env.coordinator
+        let timestamp = now
+
+        let launchTask = Task { await coordinator.handleLaunch(now: timestamp) }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        await coordinator.handleNetworkBecameReachable(now: timestamp.addingTimeInterval(1))
+        await env.sync.releaseDrain()
+        await launchTask.value
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        let calls = await env.sync.syncPendingCalls
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testManualSingleOperationSyncStillWorksAfterDeferredOffline() async throws {
+        let env = try await makeIntegrationEnvironment(online: false)
+        let customer = DomainFixtures.customer()
+        try await env.local.customers.save(customer)
+        let operation = try SyncOperation.pending(
+            id: SyncOperationID("op-manual-retry"),
+            entityType: .customer,
+            entityId: customer.id.rawValue,
+            operationType: .create,
+            createdAt: now,
+            localVersion: 1
+        )
+        _ = try await env.queue.enqueue(operation)
+
+        await env.coordinator.handleBecomeActive(now: now)
+
+        let pendingBeforeManual = try await env.queue.fetch(id: operation.id)
+        XCTAssertEqual(pendingBeforeManual.status, .pending)
+
+        await env.reachability.setReachable(true)
+        try await env.manager.syncPending(now: now.addingTimeInterval(1))
+
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
+        let writes = await env.probe.recordedWrites()
+        XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
+    }
+
+    func testWorkOrderOfflineToOnlineAutomaticallyDrainsPendingSync() async throws {
+        let env = try await makeIntegrationEnvironment(online: false)
+        let operatorUser = DomainFixtures.operatorUser()
+        try await env.local.users.save(operatorUser)
+        let customer = DomainFixtures.customer()
+        try await env.local.customers.save(customer)
+        let order = DomainFixtures.workOrder(
+            assignedTechnicianId: DomainFixtures.technicianUser().id,
+            customerId: customer.id
+        )
+        try await env.local.workOrders.save(order)
+
+        let workOrderOperation = try SyncOperation.pending(
+            id: SyncOperationID("op-wo-offline"),
+            entityType: .workOrder,
+            entityId: order.id.rawValue,
+            operationType: .create,
+            createdAt: now,
+            localVersion: 1,
+            actorUserId: operatorUser.id.rawValue
+        )
+        _ = try await env.queue.enqueue(workOrderOperation)
+
+        await env.coordinator.startObservingReachability()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        await env.reachability.setReachable(true)
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: workOrderOperation.id))
+        let writes = await env.probe.recordedWrites()
+        XCTAssertTrue(writes.contains(.save(.workOrder, order.id.rawValue)))
+    }
+
+    func testNetworkReachableDrainRunsRecoveryBeforeSync() async throws {
+        let env = try await makeIntegrationEnvironment(online: true)
+        let customer = DomainFixtures.customer()
+        try await env.local.customers.save(customer)
+        let operationId = SyncOperationID("op-stuck-in-progress")
+        _ = try await env.queue.enqueue(
+            try SyncOperation.pending(
+                id: operationId,
+                entityType: .customer,
+                entityId: customer.id.rawValue,
+                operationType: .create,
+                createdAt: now,
+                localVersion: 1
+            )
+        )
+        var row = try await env.queue.fetch(id: operationId)
+        row.status = .inProgress
+        row.lastAttemptAt = now
+        try await env.queue.update(row)
+
+        await env.coordinator.handleNetworkBecameReachable(now: now.addingTimeInterval(1))
+
+        let recovered = try await env.queue.fetch(id: operationId)
+        XCTAssertEqual(recovered.status, .failed)
+        XCTAssertNotNil(recovered.nextRetryAt)
+
+        let retryAt = recovered.nextRetryAt ?? now.addingTimeInterval(60)
+        await env.coordinator.handleNetworkBecameReachable(now: retryAt.addingTimeInterval(1))
+
+        let writes = await env.probe.recordedWrites()
+        XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operationId))
     }
 
     // MARK: - Background
@@ -232,8 +368,7 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
 
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
     }
 
     // MARK: - Spies
@@ -271,6 +406,8 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
         let local: SwiftDataTestHarness
         let queue: SwiftDataSyncOperationRepository
         let probe: SyncRemoteProbe
+        let reachability: FakeNetworkReachability
+        let manager: LocalToRemoteSyncManager
         let coordinator: SyncLifecycleCoordinator
     }
 
@@ -289,6 +426,7 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
             statusHistory: local.statusHistory,
             signatures: local.signatures,
             editRequests: local.editRequests,
+            customerSatisfactions: local.customerSatisfactions,
             notifications: local.notifications
         )
         let manager = LocalToRemoteSyncManager(
@@ -308,6 +446,8 @@ final class SyncLifecycleCoordinatorTests: XCTestCase {
             local: local,
             queue: local.syncOperations,
             probe: probe,
+            reachability: reachability,
+            manager: manager,
             coordinator: coordinator
         )
     }
@@ -358,6 +498,10 @@ actor RecordingSyncManager: SyncManaging {
     }
 
     func sync(operation: SyncOperation, now: Date) async throws {}
+
+    func lastDrainReport() async -> SyncDrainReport? { nil }
+
+    func issueSnapshot() async throws -> SyncIssueSnapshot { .empty() }
 }
 
 actor RecordingRecoveryHandler: SyncRecoveryHandling {

@@ -7,7 +7,7 @@ struct TechnicianHomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.l) {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text("Merhaba, \(viewModel.userFirstName) 👋")
                         .font(AppFont.title)
@@ -16,45 +16,48 @@ struct TechnicianHomeView: View {
                         .foregroundStyle(AppColor.secondaryText)
                 }
 
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Günlük özet yükleniyor...")
-                        .frame(minHeight: 220)
-                case .error(let message):
-                    ErrorBanner(title: "Ana sayfa yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
-                    }
-                case .empty:
-                    EmptyState(
-                        systemImage: "tray",
-                        title: "Atanmış iş yok",
-                        message: "Size yeni bir iş atandığında burada görünecek."
-                    )
-                case .loaded:
-                    summaryCard
-                    if let active = viewModel.activeJob {
-                        SectionHeader(title: "Aktif İş") {
-                            Button("Detay") { onSelectWorkOrder(WorkOrderID(active.id)) }
-                                .font(AppFont.label)
-                                .foregroundStyle(AppColor.brandPrimary)
-                        }
-                        WorkOrderCard(data: active) {
-                            onSelectWorkOrder(WorkOrderID(active.id))
-                        }
-                    }
-                    if !viewModel.upcomingJobs.isEmpty {
-                        SectionHeader(title: "Yaklaşan İşler") {
-                            Button("Tümü") { onShowWorkOrders() }
-                                .font(AppFont.label)
-                                .foregroundStyle(AppColor.brandPrimary)
-                        }
-                        ForEach(viewModel.upcomingJobs) { card in
-                            WorkOrderCard(data: card) {
-                                onSelectWorkOrder(WorkOrderID(card.id))
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "Günlük özet yükleniyor...",
+                    errorTitle: "Ana sayfa yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        summaryCard
+                        if let active = viewModel.activeJob {
+                            SectionHeader(title: "Aktif İş") {
+                                Button("Detay") { onSelectWorkOrder(WorkOrderID(active.id)) }
+                                    .font(AppFont.label)
+                                    .foregroundStyle(AppColor.brandPrimary)
+                            }
+                            WorkOrderCard(data: active) {
+                                onSelectWorkOrder(WorkOrderID(active.id))
                             }
                         }
+                        if !viewModel.upcomingJobs.isEmpty {
+                            SectionHeader(title: "Yaklaşan İşler") {
+                                Button("Tümü") { onShowWorkOrders() }
+                                    .font(AppFont.label)
+                                    .foregroundStyle(AppColor.brandPrimary)
+                            }
+                            ForEach(viewModel.upcomingJobs) { card in
+                                WorkOrderCard(data: card) {
+                                    onSelectWorkOrder(WorkOrderID(card.id))
+                                }
+                            }
+                        }
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "tray",
+                            title: "Atanmış iş yok",
+                            message: "Size yeni bir iş atandığında burada görünecek."
+                        )
                     }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
@@ -63,6 +66,11 @@ struct TechnicianHomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
+        .onAppear {
+            if viewModel.hasCachedContent {
+                Task { await viewModel.refreshFromRemoteDirectory() }
+            }
+        }
     }
 
     private var summaryCard: some View {

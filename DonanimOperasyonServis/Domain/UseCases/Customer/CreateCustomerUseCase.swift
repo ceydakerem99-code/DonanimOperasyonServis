@@ -50,6 +50,53 @@ struct CreateCustomerUseCase: Sendable {
     }
 }
 
+/// Updates editable customer contact fields for the operator surface.
+struct UpdateCustomerUseCase: Sendable {
+    let customerRepository: CustomerRepository
+
+    init(customerRepository: CustomerRepository) {
+        self.customerRepository = customerRepository
+    }
+
+    func execute(
+        actor: User,
+        customerId: CustomerID,
+        name: String,
+        contactPersonName: String? = nil,
+        phoneNumber: PhoneNumber? = nil,
+        email: String? = nil,
+        address: String,
+        city: String? = nil,
+        notes: String? = nil,
+        at now: Date = Date()
+    ) async throws -> Customer {
+        guard RoleAccessPolicy.can(.updateCustomer, as: actor.role) else {
+            throw DomainError.unauthorized(action: .updateCustomer)
+        }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw DomainError.invalidData(reason: "customer.nameEmpty")
+        }
+        guard !trimmedAddress.isEmpty else {
+            throw DomainError.invalidData(reason: "customer.addressEmpty")
+        }
+
+        var customer = try await customerRepository.fetch(id: customerId)
+        customer.name = trimmedName
+        customer.contactPersonName = contactPersonName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        customer.phoneNumber = phoneNumber
+        customer.email = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        customer.address = trimmedAddress
+        customer.city = city?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        customer.notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        customer.updatedAt = now
+        try await customerRepository.save(customer)
+        return customer
+    }
+}
+
 private extension String {
     var nilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)

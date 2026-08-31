@@ -36,11 +36,19 @@ final class AdminDashboardViewModel {
     private(set) var phase: Phase = .loading
     private(set) var summary = AdminDashboardSummary()
     private(set) var recentActivities: [AdminActivityItem] = []
-    private(set) var alerts: [String] = []
+    private(set) var recentCompletedOrders: [WorkOrderCardData] = []
     let userFirstName: String
 
     private let actor: User
     private let dependencies: AdminDependencies
+    private let asyncLoad = AsyncLoadSession()
+
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool {
+        summary.totalWorkOrders > 0
+            || !recentCompletedOrders.isEmpty
+            || !recentActivities.isEmpty
+    }
 
     init(actor: User, dependencies: AdminDependencies) {
         self.actor = actor
@@ -49,39 +57,90 @@ final class AdminDashboardViewModel {
     }
 
     func load() async {
-        phase = .loading
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
+        await dependencies.localDirectoryCacheRefresh.refreshUsers()
         do {
             let users = try await dependencies.listUsers.execute(actor: actor)
             let orders = try await dependencies.getSystemWorkOrders.execute(actor: actor)
             let now = Date()
             let pending = try await dependencies.syncOperationRepository.countPending(now: now)
-            let failed = try await dependencies.syncOperationRepository.fetchFailed()
+            let issueSnapshot = try await dependencies.syncManager.issueSnapshot()
             let conflicts = try await dependencies.syncConflictRepository.listUnresolved()
             let online = await dependencies.networkReachability.isReachable
 
+            guard asyncLoad.isCurrent(generation) else { return }
+            let customers = await loadCustomerMap(for: orders)
+            let technicians = await loadTechnicianMap(for: orders)
             summary = Self.makeSummary(
                 users: users,
                 orders: orders,
                 pendingSync: pending,
-                failedSync: failed.count,
+                failedSync: issueSnapshot.activeFailedCount,
                 unresolvedConflicts: conflicts.count,
                 isOnline: online
             )
             recentActivities = Self.makeActivities(from: orders)
-            alerts = Self.makeAlerts(
-                failedSync: failed.count,
-                unresolvedConflicts: conflicts.count,
-                isOnline: online
+            recentCompletedOrders = Self.makeRecentCompletedCards(
+                from: orders,
+                customers: customers,
+                technicians: technicians
             )
 
             phase = users.isEmpty && orders.isEmpty ? .empty : .loaded
         } catch is CancellationError {
-            return
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.empty
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
-            phase = .error(error.adminMessage)
+            guard asyncLoad.isCurrent(generation) else { return }
+            if hasCachedContent {
+                phase = .loaded
+            } else {
+                phase = .error(error.adminMessage)
+            }
         } catch {
-            phase = .error("Veriler yüklenemedi.")
+            guard asyncLoad.isCurrent(generation) else { return }
+            if hasCachedContent {
+                phase = .loaded
+            } else {
+                phase = .error("Veriler yüklenemedi.")
+            }
         }
+    }
+
+    private func loadCustomerMap(for orders: [WorkOrder]) async -> [CustomerID: Customer] {
+        var map: [CustomerID: Customer] = [:]
+        if let customers = try? await dependencies.customerRepository.list(searchText: nil) {
+            for customer in customers { map[customer.id] = customer }
+        }
+        for customerId in Set(orders.map(\.customerId)) where map[customerId] == nil {
+            if let customer = try? await dependencies.customerRepository.fetch(id: customerId) {
+                map[customerId] = customer
+            }
+        }
+        return map
+    }
+
+    private func loadTechnicianMap(for orders: [WorkOrder]) async -> [UserID: User] {
+        var map: [UserID: User] = [:]
+        if let technicians = try? await dependencies.userRepository.list(role: .technician, isActive: nil) {
+            for tech in technicians { map[tech.id] = tech }
+        }
+        for techId in Set(orders.map(\.assignedTechnicianId)) where map[techId] == nil {
+            if let tech = try? await dependencies.userRepository.fetch(id: techId) {
+                map[techId] = tech
+            }
+        }
+        return map
     }
 
     private static func makeSummary(
@@ -122,23 +181,27 @@ final class AdminDashboardViewModel {
             }
     }
 
-    private static func makeAlerts(
-        failedSync: Int,
-        unresolvedConflicts: Int,
-        isOnline: Bool
-    ) -> [String] {
-        var alerts: [String] = []
-        if !isOnline {
-            alerts.append("Cihaz çevrimdışı. Senkron işlemleri bekliyor.")
-        }
-        if failedSync > 0 {
-            alerts.append("\(failedSync) başarısız senkron işlemi var.")
-        }
-        if unresolvedConflicts > 0 {
-            alerts.append("\(unresolvedConflicts) çözülmemiş çakışma var (operasyon yetkilisi çözer).")
-        }
-        return alerts
+    static func makeRecentCompletedCards(
+        from orders: [WorkOrder],
+        customers: [CustomerID: Customer],
+        technicians: [UserID: User],
+        limit: Int = 5
+    ) -> [WorkOrderCardData] {
+        orders
+            .filter { $0.status == .completed }
+            .sorted {
+                ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt)
+            }
+            .prefix(limit)
+            .map { order in
+                WorkOrderPresentationMapping.cardData(
+                    from: order,
+                    customerName: customers[order.customerId]?.name ?? "Bilinmeyen müşteri",
+                    technicianName: technicians[order.assignedTechnicianId]?.fullName
+                )
+            }
     }
+
 }
 
 #if DEBUG

@@ -83,6 +83,20 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
         }
     }
 
+    func updateFields<T: Encodable & Sendable>(
+        _ value: T,
+        collection: FirestoreCollection,
+        id: String
+    ) async throws {
+        let ref = firestore.collection(collection.rawValue).document(id)
+        do {
+            let payload = try LiveFirestoreConfiguration.encode(value)
+            try await ref.updateData(payload)
+        } catch {
+            throw FirebaseError.map(error)
+        }
+    }
+
     func delete(
         collection: FirestoreCollection,
         id: String

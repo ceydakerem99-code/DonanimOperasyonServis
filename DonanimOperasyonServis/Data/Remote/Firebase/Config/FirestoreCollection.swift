@@ -27,4 +27,5 @@ enum FirestoreCollection: String, CaseIterable, Sendable {
     case signatures
     case editRequests
     case notifications
+    case customerSatisfactions
 }

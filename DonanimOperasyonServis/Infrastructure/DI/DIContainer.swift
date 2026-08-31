@@ -42,6 +42,7 @@ final class DIContainer: Sendable {
     let userRepository: any UserRepository
     let authRepository: any AuthRepository
     let customerRepository: any CustomerRepository
+    let workOrderTemplateRepository: any WorkOrderTemplateRepository
     let workOrderRepository: any WorkOrderRepository
     let workOrderNoteRepository: any WorkOrderNoteRepository
     let workOrderPhotoRepository: any WorkOrderPhotoRepository
@@ -49,16 +50,19 @@ final class DIContainer: Sendable {
     let workOrderStatusHistoryRepository: any WorkOrderStatusHistoryRepository
     let signatureRepository: any SignatureRepository
     let editRequestRepository: any EditRequestRepository
+    let customerSatisfactionRepository: any CustomerSatisfactionRepository
     let notificationRepository: any NotificationRepository
     let syncOperationRepository: any SyncOperationRepository
     let syncConflictRepository: any SyncConflictRepository
     let syncManager: any SyncManaging
+    let syncProgressStore: SyncProgressStore
     let reconciliationEngine: any Reconciling
     let conflictResolver: any ConflictResolving
     let networkReachability: any NetworkReachabilityProviding
     let syncRecoveryHandler: any SyncRecoveryHandling
     let backgroundSyncScheduler: any BackgroundSyncScheduling
     let syncCoordinator: any SyncLifecycleCoordinating
+    let realtimeCoordinator: RealtimeCoordinator
 
     // MARK: Auth session (Phase 6)
 
@@ -75,7 +79,10 @@ final class DIContainer: Sendable {
     let remoteWorkOrderStatusHistoryRepository: any WorkOrderStatusHistoryRepository
     let remoteSignatureRepository: any SignatureRepository
     let remoteEditRequestRepository: any EditRequestRepository
+    let remoteCustomerSatisfactionRepository: any CustomerSatisfactionRepository
     let remoteNotificationRepository: any NotificationRepository
+
+    let localDirectoryCacheRefresh: LocalDirectoryCacheRefresh
 
     // MARK: Factories
 
@@ -165,6 +172,7 @@ final class DIContainer: Sendable {
 
         self.userRepository                     = SwiftDataUserRepository(store: store)
         self.customerRepository                 = SwiftDataCustomerRepository(store: store)
+        self.workOrderTemplateRepository        = SwiftDataWorkOrderTemplateRepository(store: store)
         self.workOrderRepository                = SwiftDataWorkOrderRepository(store: store)
         self.workOrderNoteRepository            = SwiftDataWorkOrderNoteRepository(store: store)
         self.workOrderPhotoRepository           = SwiftDataWorkOrderPhotoRepository(store: store)
@@ -172,6 +180,7 @@ final class DIContainer: Sendable {
         self.workOrderStatusHistoryRepository   = SwiftDataWorkOrderStatusHistoryRepository(store: store)
         self.signatureRepository                = SwiftDataSignatureRepository(store: store)
         self.editRequestRepository              = SwiftDataEditRequestRepository(store: store)
+        self.customerSatisfactionRepository     = SwiftDataCustomerSatisfactionRepository(store: store)
         self.notificationRepository             = SwiftDataNotificationRepository(store: store)
         self.syncOperationRepository            = SwiftDataSyncOperationRepository(store: store)
         self.syncConflictRepository             = SwiftDataSyncConflictRepository(store: store)
@@ -186,6 +195,7 @@ final class DIContainer: Sendable {
             statusHistory: self.workOrderStatusHistoryRepository,
             signatures: self.signatureRepository,
             editRequests: self.editRequestRepository,
+            customerSatisfactions: self.customerSatisfactionRepository,
             notifications: self.notificationRepository
         )
         let remoteEntities = SyncEntityRepositories(
@@ -198,6 +208,7 @@ final class DIContainer: Sendable {
             statusHistory: FirebaseWorkOrderStatusHistoryRepository(dataSource: firestoreDataSource),
             signatures: FirebaseSignatureRepository(dataSource: firestoreDataSource),
             editRequests: FirebaseEditRequestRepository(dataSource: firestoreDataSource),
+            customerSatisfactions: FirebaseCustomerSatisfactionRepository(dataSource: firestoreDataSource),
             notifications: FirebaseNotificationRepository(dataSource: firestoreDataSource)
         )
         self.remoteUserRepository                     = remoteEntities.users
@@ -209,6 +220,7 @@ final class DIContainer: Sendable {
         self.remoteWorkOrderStatusHistoryRepository   = remoteEntities.statusHistory
         self.remoteSignatureRepository                = remoteEntities.signatures
         self.remoteEditRequestRepository              = remoteEntities.editRequests
+        self.remoteCustomerSatisfactionRepository     = remoteEntities.customerSatisfactions
         self.remoteNotificationRepository             = remoteEntities.notifications
         self.authService = authService
         if authService is FakeFirebaseAuthService {
@@ -225,18 +237,38 @@ final class DIContainer: Sendable {
             )
         }
         self.networkReachability = networkReachability
+        let progressStore = SyncProgressStore()
+        self.syncProgressStore = progressStore
         self.syncManager = LocalToRemoteSyncManager(
             queue: self.syncOperationRepository,
             conflicts: self.syncConflictRepository,
             local: localEntities,
             remote: remoteEntities,
-            reachability: networkReachability
+            reachability: networkReachability,
+            storage: storageDataSource,
+            authService: authService,
+            onProgress: { index, total in
+                progressStore.updateProgress(index: index, total: total)
+            }
         )
         self.reconciliationEngine = RemoteToLocalReconciliationEngine(
             queue: self.syncOperationRepository,
             conflicts: self.syncConflictRepository,
             local: localEntities,
             remote: remoteEntities
+        )
+        self.localDirectoryCacheRefresh = LocalDirectoryCacheRefresh(
+            localUsers: self.userRepository,
+            remoteUsers: remoteEntities.users,
+            localCustomers: self.customerRepository,
+            remoteCustomers: remoteEntities.customers,
+            localWorkOrders: self.workOrderRepository,
+            remoteWorkOrders: remoteEntities.workOrders,
+            localNotifications: self.notificationRepository,
+            remoteNotifications: remoteEntities.notifications,
+            syncOperationRepository: self.syncOperationRepository,
+            reconciliationEngine: self.reconciliationEngine,
+            networkReachability: networkReachability
         )
         self.conflictResolver = LocalConflictResolver(
             queue: self.syncOperationRepository,
@@ -252,19 +284,40 @@ final class DIContainer: Sendable {
             syncManager: self.syncManager,
             recovery: self.syncRecoveryHandler,
             reachability: networkReachability,
-            scheduler: backgroundSyncScheduler
+            scheduler: backgroundSyncScheduler,
+            progressStore: progressStore
         )
+#if DEBUG
+        self.realtimeCoordinator = RealtimeCoordinator(
+            authService: authService,
+            configuration: .default,
+            transport: nil,
+            debugReachability: networkReachability as? DebugNetworkReachabilityControlling
+        )
+#else
+        self.realtimeCoordinator = RealtimeCoordinator(
+            authService: authService,
+            networkReachability: networkReachability
+        )
+#endif
     }
 
-    private static func makeLiveReachability() -> PathMonitorNetworkReachability {
+    private static func makeLiveReachability() -> any NetworkReachabilityProviding {
+        #if DEBUG
+        return DebuggableNetworkReachability()
+        #else
         let monitor = PathMonitorNetworkReachability()
         monitor.start()
         return monitor
+        #endif
     }
 
     @MainActor
     func makeAuthSessionController() -> AuthSessionController {
-        AuthSessionController(authRepository: authRepository)
+        AuthSessionController(
+            authRepository: authRepository,
+            realtimeCoordinator: realtimeCoordinator
+        )
     }
 
     /// Mock/test auth repository with session persistence. Tests can

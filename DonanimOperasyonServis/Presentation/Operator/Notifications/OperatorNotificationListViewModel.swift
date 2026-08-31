@@ -7,6 +7,16 @@ struct OperatorNotificationRow: Identifiable, Equatable, Sendable {
     let body: String
     let createdAt: Date
     let isRead: Bool
+    let type: NotificationType
+    let relatedWorkOrderId: WorkOrderID?
+    let relatedEditRequestId: EditRequestID?
+}
+
+enum OperatorNotificationOpenOutcome: Equatable, Sendable {
+    case workOrderDetail(WorkOrderID)
+    case editRequestDetail(EditRequestID)
+    case markedReadOnly
+    case missingRelated
 }
 
 @Observable
@@ -21,10 +31,16 @@ final class OperatorNotificationListViewModel {
 
     private(set) var phase: Phase = .loading
     private(set) var notifications: [OperatorNotificationRow] = []
+    private(set) var fallbackMessage: String?
 
     private let actor: User
     private let dependencies: OperatorDependencies
-    private var loadGeneration = 0
+    private let asyncLoad = AsyncLoadSession()
+    private var items: [AppNotification] = []
+
+    var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
+    var hasCachedContent: Bool { !notifications.isEmpty }
+    var unreadCount: Int { notifications.filter { !$0.isRead }.count }
 
     init(actor: User, dependencies: OperatorDependencies) {
         self.actor = actor
@@ -32,41 +48,115 @@ final class OperatorNotificationListViewModel {
     }
 
     func load() async {
-        loadGeneration &+= 1
-        let generation = loadGeneration
-        phase = .loading
+        let context = asyncLoad.start(hadCachedContent: hasCachedContent)
+        if !context.hadCachedContentAtStart { phase = .loading }
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
         do {
-            let items = try await dependencies.notificationRepository.list(
+            let prefs = try await dependencies.userRepository.fetch(id: actor.id).notificationPreferences
+            let fetched = try await dependencies.notificationRepository.list(
                 for: actor.id,
                 unreadOnly: false
             )
-            guard generation == loadGeneration, !Task.isCancelled else { return }
-            notifications = items
-                .sorted { $0.createdAt > $1.createdAt }
-                .map {
-                    OperatorNotificationRow(
-                        id: $0.id,
-                        title: $0.title,
-                        body: $0.body,
-                        createdAt: $0.createdAt,
-                        isRead: $0.isRead
-                    )
-                }
+            guard asyncLoad.isCurrent(generation) else { return }
+            apply(items: fetched, preferences: prefs)
             phase = notifications.isEmpty ? .empty : .loaded
         } catch is CancellationError {
-            return
+            guard asyncLoad.isCurrent(generation) else { return }
+            if let settled = asyncLoad.settleCancelledLoad(
+                context: context,
+                phase: phase,
+                loadingPhase: Phase.loading,
+                loadedPhase: Phase.loaded,
+                emptyPhase: Phase.empty
+            ) {
+                phase = settled
+            }
         } catch let error as DomainError {
-            guard generation == loadGeneration else { return }
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error(error.operatorMessage)
         } catch {
-            guard generation == loadGeneration else { return }
+            guard asyncLoad.isCurrent(generation) else { return }
             phase = .error("Bildirimler yüklenemedi.")
         }
     }
 
-    func markRead(_ id: NotificationID) async {
+    /// Marks read, then resolves deep-link without entering a loading spinner.
+    func open(_ id: NotificationID) async -> OperatorNotificationOpenOutcome {
+        fallbackMessage = nil
+        guard let item = items.first(where: { $0.id == id }) else {
+            fallbackMessage = "İlişkili kayıt bulunamadı."
+            return .missingRelated
+        }
+
         try? await dependencies.notificationRepository.markAsRead(id: id)
-        await load()
+       _ = try? await TechnicianSyncEnqueue.enqueueUpdate(
+            entityType: .notification,
+            entityId: id.rawValue,
+            queue: dependencies.syncOperationRepository,
+            now: Date(),
+            actorUserId: actor.id.rawValue,
+            payloadReference: actor.id.rawValue
+        )
+        markLocallyRead(id: id)
+
+        if let workOrderId = item.relatedWorkOrderId {
+            do {
+                _ = try await dependencies.getWorkOrder.execute(actor: actor, id: workOrderId)
+                return .workOrderDetail(workOrderId)
+            } catch {
+                fallbackMessage = "İlişkili kayıt bulunamadı."
+                return .missingRelated
+            }
+        }
+
+        if let editRequestId = item.relatedEditRequestId {
+            do {
+                _ = try await dependencies.editRequestRepository.fetch(id: editRequestId)
+                return .editRequestDetail(editRequestId)
+            } catch {
+                fallbackMessage = "İlişkili kayıt bulunamadı."
+                return .missingRelated
+            }
+        }
+
+        return .markedReadOnly
+    }
+
+    func clearFallbackMessage() {
+        fallbackMessage = nil
+    }
+
+    private func markLocallyRead(id: NotificationID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].isRead = true
+        apply(items: items, preferences: cachedPreferences)
+        if case .error = phase {
+            return
+        }
+        phase = notifications.isEmpty ? .empty : .loaded
+    }
+
+    private var cachedPreferences: NotificationPreferences = .default
+
+    private func apply(items: [AppNotification], preferences: NotificationPreferences) {
+        cachedPreferences = preferences
+        let visible = items.filter { preferences.allowsDisplay(of: $0.type) }
+        self.items = visible.sorted { $0.createdAt > $1.createdAt }
+        notifications = self.items.map(Self.mapRow)
+    }
+
+    private static func mapRow(_ notification: AppNotification) -> OperatorNotificationRow {
+        OperatorNotificationRow(
+            id: notification.id,
+            title: notification.title,
+            body: notification.body,
+            createdAt: notification.createdAt,
+            isRead: notification.isRead,
+            type: notification.type,
+            relatedWorkOrderId: notification.relatedWorkOrderId,
+            relatedEditRequestId: notification.relatedEditRequestId
+        )
     }
 }
 
@@ -78,15 +168,7 @@ extension OperatorNotificationListViewModel {
             dependencies: DIContainer.mock().makeOperatorDependencies()
         )
         vm.phase = .loaded
-        vm.notifications = OperatorPreviewData.sampleNotifications.map {
-            OperatorNotificationRow(
-                id: $0.id,
-                title: $0.title,
-                body: $0.body,
-                createdAt: $0.createdAt,
-                isRead: $0.isRead
-            )
-        }
+        vm.apply(items: OperatorPreviewData.sampleNotifications, preferences: .default)
         return vm
     }
 }

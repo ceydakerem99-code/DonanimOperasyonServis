@@ -6,39 +6,40 @@ struct AdminDashboardView: View {
     var onShowReports: ((AdminReportKind) -> Void)?
     var onShowConflicts: (() -> Void)?
     var onSelectWorkOrder: ((WorkOrderID) -> Void)?
+    var onShowAllCompleted: (() -> Void)?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.l) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.l) {
                 greetingSection
 
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Özet yükleniyor...")
-                        .frame(minHeight: 240)
-
-                case .error(let message):
-                    ErrorBanner(title: "Dashboard yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: viewModel.phase == .empty,
+                    loadingMessage: "Özet yükleniyor...",
+                    errorTitle: "Dashboard yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } },
+                    content: {
+                        systemSummaryCard
+                        workOrderSummaryCard
+                        if !viewModel.recentActivities.isEmpty {
+                            recentActivitiesSection
+                        }
+                        if !viewModel.recentCompletedOrders.isEmpty {
+                            recentCompletedSection
+                        }
+                    },
+                    empty: {
+                        EmptyState(
+                            systemImage: "chart.bar",
+                            title: "Henüz veri yok",
+                            message: "Kullanıcı ve iş emri verileri eklendiğinde özet burada görünecek."
+                        )
                     }
-
-                case .empty:
-                    EmptyState(
-                        systemImage: "chart.bar",
-                        title: "Henüz veri yok",
-                        message: "Kullanıcı ve iş emri verileri eklendiğinde özet burada görünecek."
-                    )
-
-                case .loaded:
-                    systemSummaryCard
-                    workOrderSummaryCard
-                    if !viewModel.alerts.isEmpty {
-                        alertsSection
-                    }
-                    if !viewModel.recentActivities.isEmpty {
-                        recentActivitiesSection
-                    }
-                }
+                )
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
@@ -139,34 +140,6 @@ struct AdminDashboardView: View {
         .accessibilityHint("İlgili ekrana gider")
     }
 
-    private var alertsSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.s) {
-            SectionHeader(title: "Uyarılar")
-            ForEach(viewModel.alerts, id: \.self) { alert in
-                Button {
-                    if alert.contains("çakışma") {
-                        onShowConflicts?()
-                    }
-                } label: {
-                    HStack(spacing: AppSpacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(AppColor.warning)
-                        Text(alert)
-                            .font(AppFont.caption)
-                            .foregroundStyle(AppColor.primaryText)
-                            .multilineTextAlignment(.leading)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(AppSpacing.m)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
-                }
-                .buttonStyle(.plain)
-                .disabled(!alert.contains("çakışma"))
-            }
-        }
-    }
-
     private var recentActivitiesSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s) {
             SectionHeader(title: "Son Aktiviteler")
@@ -183,6 +156,21 @@ struct AdminDashboardView: View {
                     )
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var recentCompletedSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s) {
+            SectionHeader(title: "Son Tamamlanan İşler") {
+                Button("Tümünü Gör") { onShowAllCompleted?() }
+                    .font(AppFont.label)
+                    .foregroundStyle(AppColor.brandPrimary)
+            }
+            ForEach(viewModel.recentCompletedOrders) { card in
+                WorkOrderCard(data: card) {
+                    onSelectWorkOrder?(WorkOrderID(card.id))
+                }
             }
         }
     }

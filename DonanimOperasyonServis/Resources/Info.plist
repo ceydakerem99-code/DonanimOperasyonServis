@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.donanimoperasyonservis.app.sync</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>tr</string>
+	<key>CFBundleDisplayName</key>
+	<string>DOPS</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -12,16 +18,38 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
-	<key>CFBundleDisplayName</key>
-	<string>DOPS</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>RealtimeGatewayHost</key>
+	<string>$(REALTIME_GATEWAY_HOST)</string>
+	<key>RealtimeGatewayPort</key>
+	<string>$(REALTIME_GATEWAY_PORT)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Servis öncesi ve sonrası durumu, seri numarası ile kanıt fotoğraflarını çekmek için kamera erişimi gereklidir.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Konum bilginiz servis iş emirlerinde yola çıkma, müşteriye varış ve iş tamamlama olaylarını kayıt altına almak için kullanılır.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Servis fotoğraflarını gerektiğinde fotoğraf kütüphanesine kaydetmek için erişim gereklidir.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Servis iş emirlerine görsel eklemek için fotoğraf kütüphanesine erişim gereklidir.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
@@ -31,28 +59,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Konum bilginiz servis iş emirlerinde yola çıkma, müşteriye varış ve iş tamamlama olaylarını kayıt altına almak için kullanılır.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Servis öncesi ve sonrası durumu, seri numarası ile kanıt fotoğraflarını çekmek için kamera erişimi gereklidir.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Servis iş emirlerine görsel eklemek için fotoğraf kütüphanesine erişim gereklidir.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Servis fotoğraflarını gerektiğinde fotoğraf kütüphanesine kaydetmek için erişim gereklidir.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.donanimoperasyonservis.app.sync</string>
 	</array>
 </dict>
 </plist>

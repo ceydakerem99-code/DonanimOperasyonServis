@@ -38,8 +38,7 @@ final class NetworkRetryRecoveryTests: XCTestCase {
 
         let outcome = try await env.manager.syncPending(now: now)
         XCTAssertEqual(outcome, .completed)
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
     }
@@ -56,8 +55,7 @@ final class NetworkRetryRecoveryTests: XCTestCase {
         await env.reachability.setReachable(true)
         let flippedOnline = try await env.manager.syncPending(now: now)
         XCTAssertEqual(flippedOnline, .completed)
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
     }
@@ -162,9 +160,7 @@ final class NetworkRetryRecoveryTests: XCTestCase {
 
         await env.probe.setError(nil)
         _ = try await env.manager.syncPending(now: due)
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
-        XCTAssertEqual(stored.retryCount, 1)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
     }
@@ -364,13 +360,11 @@ final class NetworkRetryRecoveryTests: XCTestCase {
         let recovered = try await env.queue.fetch(id: operation.id)
         let due = try XCTUnwrap(recovered.nextRetryAt)
 
+        XCTAssertEqual(recovered.idempotencyKey, originalKey)
         _ = try await env.manager.syncPending(now: due)
-        let stored = try await env.queue.fetch(id: operation.id)
-        XCTAssertEqual(stored.status, .succeeded)
-        XCTAssertEqual(stored.id, operation.id)
-        XCTAssertEqual(stored.idempotencyKey, originalKey)
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: operation.id))
         let listed = try await env.queue.list(entityType: .customer, entityId: customer.id.rawValue)
-        XCTAssertEqual(listed.count, 1)
+        XCTAssertTrue(listed.isEmpty)
         let writes = await env.probe.recordedWrites()
         XCTAssertEqual(writes, [.save(.customer, customer.id.rawValue)])
     }
@@ -430,6 +424,8 @@ final class NetworkRetryRecoveryTests: XCTestCase {
         let probe = SyncRemoteProbe()
         let remote = SyncManagerTestFactory.remoteBundle(probe: probe)
         let reachability = FakeNetworkReachability(isReachable: online)
+        let auth = FakeFirebaseAuthService()
+        auth.setUID(DomainFixtures.technicianUser().id.rawValue)
         let localEntities = SyncEntityRepositories(
             users: local.users,
             customers: local.customers,
@@ -440,6 +436,7 @@ final class NetworkRetryRecoveryTests: XCTestCase {
             statusHistory: local.statusHistory,
             signatures: local.signatures,
             editRequests: local.editRequests,
+            customerSatisfactions: local.customerSatisfactions,
             notifications: local.notifications
         )
         let manager = LocalToRemoteSyncManager(
@@ -447,7 +444,8 @@ final class NetworkRetryRecoveryTests: XCTestCase {
             conflicts: local.syncConflicts,
             local: localEntities,
             remote: remote.repositories,
-            reachability: reachability
+            reachability: reachability,
+            authService: auth
         )
         return Environment(
             local: local,

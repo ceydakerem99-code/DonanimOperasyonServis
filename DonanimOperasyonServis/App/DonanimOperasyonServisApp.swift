@@ -15,9 +15,16 @@ struct DonanimOperasyonServisApp: App {
                     await coordinator.handleLaunch()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else { return }
-                    Task {
-                        await appDelegate.container.syncCoordinator.handleBecomeActive()
+                    switch phase {
+                    case .active:
+                        Task {
+                            await appDelegate.container.syncCoordinator.handleBecomeActive()
+                            appDelegate.container.realtimeCoordinator.handleForeground()
+                        }
+                    case .background, .inactive:
+                        appDelegate.container.realtimeCoordinator.handleBackground()
+                    @unknown default:
+                        break
                     }
                 }
         }

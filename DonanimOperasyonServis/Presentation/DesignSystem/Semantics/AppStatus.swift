@@ -11,6 +11,7 @@ import SwiftUI
 enum AppStatus: String, CaseIterable, Hashable, Sendable {
     case assigned
     case accepted
+    case rejected
     case enRoute
     case arrived
     case inProgress
@@ -24,6 +25,7 @@ extension AppStatus {
         switch self {
         case .assigned:   return "Atandı"
         case .accepted:   return "Kabul Edildi"
+        case .rejected:   return "Reddedildi"
         case .enRoute:    return "Yola Çıkıldı"
         case .arrived:    return "Müşteriye Varıldı"
         case .inProgress: return "İşlemde"
@@ -36,6 +38,7 @@ extension AppStatus {
         switch self {
         case .assigned:   return AppColor.statusAssigned
         case .accepted:   return AppColor.statusAccepted
+        case .rejected:   return AppColor.danger
         case .enRoute:    return AppColor.statusEnRoute
         case .arrived:    return AppColor.statusArrived
         case .inProgress: return AppColor.statusInProgress
@@ -49,6 +52,7 @@ extension AppStatus {
         switch self {
         case .assigned:   return "tray.and.arrow.down"
         case .accepted:   return "checkmark.circle"
+        case .rejected:   return "xmark.circle.fill"
         case .enRoute:    return "car"
         case .arrived:    return "mappin.and.ellipse"
         case .inProgress: return "wrench.and.screwdriver"

@@ -5,6 +5,7 @@ struct TechnicianDependencies: Sendable {
     let getWorkOrder: GetWorkOrderUseCase
     let workOrderService: TechnicianWorkOrderService
     let customerRepository: CustomerRepository
+    let localDirectoryCacheRefresh: LocalDirectoryCacheRefresh
     let workOrderNoteRepository: WorkOrderNoteRepository
     let workOrderPhotoRepository: WorkOrderPhotoRepository
     let workOrderLocationRepository: WorkOrderLocationRepository
@@ -14,7 +15,10 @@ struct TechnicianDependencies: Sendable {
     let syncOperationRepository: SyncOperationRepository
     let syncConflictRepository: SyncConflictRepository
     let networkReachability: NetworkReachabilityProviding
-    let createEditRequest: CreateEditRequestUseCase
+    let editRequestRepository: EditRequestRepository
+    let editRequestService: TechnicianEditRequestService
+    let profileAccountService: ProfileAccountService
+    let storageDataSource: any FirebaseStorageDataSource
 }
 
 extension DIContainer {
@@ -52,10 +56,23 @@ extension DIContainer {
                     signatureRepository: signatureRepository
                 ),
                 statusHistoryRepository: workOrderStatusHistoryRepository,
+                customerSatisfactionService: TechnicianCustomerSatisfactionService(
+                    createCustomerSatisfaction: CreateCustomerSatisfactionUseCase(
+                        workOrderRepository: workOrderRepository,
+                        customerSatisfactionRepository: customerSatisfactionRepository
+                    ),
+                    syncOperationRepository: syncOperationRepository,
+                    workOrderRepository: workOrderRepository,
+                    customerRepository: customerRepository,
+                    syncManager: syncManager,
+                    remoteCustomerSatisfactionRepository: remoteCustomerSatisfactionRepository,
+                    networkReachability: networkReachability
+                ),
                 syncOperationRepository: syncOperationRepository,
                 storageDataSource: firebaseStorageDataSource
             ),
             customerRepository: customerRepository,
+            localDirectoryCacheRefresh: localDirectoryCacheRefresh,
             workOrderNoteRepository: workOrderNoteRepository,
             workOrderPhotoRepository: workOrderPhotoRepository,
             workOrderLocationRepository: workOrderLocationRepository,
@@ -65,10 +82,18 @@ extension DIContainer {
             syncOperationRepository: syncOperationRepository,
             syncConflictRepository: syncConflictRepository,
             networkReachability: networkReachability,
-            createEditRequest: CreateEditRequestUseCase(
+            editRequestRepository: editRequestRepository,
+            editRequestService: TechnicianEditRequestService(
+                createEditRequest: CreateEditRequestUseCase(
+                    workOrderRepository: workOrderRepository,
+                    editRequestRepository: editRequestRepository
+                ),
                 workOrderRepository: workOrderRepository,
-                editRequestRepository: editRequestRepository
-            )
+                notificationRepository: notificationRepository,
+                syncOperationRepository: syncOperationRepository
+            ),
+            profileAccountService: makeProfileAccountService(),
+            storageDataSource: firebaseStorageDataSource
         )
     }
 }

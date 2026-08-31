@@ -11,17 +11,16 @@ struct AdminSystemView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.l) {
-                switch viewModel.phase {
-                case .loading:
-                    LoadingView(message: "Sistem bilgileri yükleniyor...")
-                        .frame(minHeight: 240)
-
-                case .error(let message):
-                    ErrorBanner(title: "Sistem yüklenemedi", message: message) {
-                        Task { await viewModel.load() }
-                    }
-
-                case .loaded:
+                AsyncLoadContainerView(
+                    isLoading: viewModel.phase == .loading,
+                    showsLoadingIndicator: viewModel.showsLoadingIndicator,
+                    hasCachedContent: viewModel.hasCachedContent,
+                    errorMessage: AsyncLoadPhaseParsing.errorMessage(viewModel.phase),
+                    isEmpty: false,
+                    loadingMessage: "Sistem bilgileri yükleniyor...",
+                    errorTitle: "Sistem yüklenemedi",
+                    onRetry: { Task { await viewModel.load() } }
+                ) {
                     appInfoCard
                     syncHealthCard
                     accountSection
@@ -49,6 +48,23 @@ struct AdminSystemView: View {
                             action: onShowConflicts
                         )
                     }
+
+                    #if DEBUG
+                    menuSection(title: "Geliştirici / Test") {
+                        NavigationLink {
+                            DebugDeveloperToolsView()
+                        } label: {
+                            ProfileNavigationRow(title: "Demo Veri & Sync", systemImage: "wrench.and.screwdriver")
+                        }
+                        .buttonStyle(.plain)
+                        if let message = viewModel.syncStatusMessage {
+                            Text(message)
+                                .font(AppFont.caption)
+                                .foregroundStyle(AppColor.secondaryText)
+                                .padding(.top, AppSpacing.xs)
+                        }
+                    }
+                    #endif
 
                     Button(action: onLogout) {
                         Text("Çıkış Yap")
@@ -104,9 +120,26 @@ struct AdminSystemView: View {
             InfoRow(title: "Ad Soyad", value: currentUser.fullName, systemImage: "person")
             InfoRow(title: "E-posta", value: currentUser.email, systemImage: "envelope")
             InfoRow(title: "Rol", value: UserRole.admin.displayName, systemImage: "shield")
-            ProfileUnsupportedRow(title: "Bildirim Ayarları", systemImage: "bell")
-            ProfileUnsupportedRow(title: "Şifre / Güvenlik", systemImage: "lock")
-            ProfileUnsupportedRow(title: "Dil", systemImage: "globe", value: "Türkçe")
+            NavigationLink {
+                NotificationSettingsView(
+                    viewModel: NotificationSettingsViewModel(
+                        actor: currentUser,
+                        accountService: viewModel.accountService
+                    )
+                )
+            } label: {
+                ProfileNavigationRow(title: "Bildirim Ayarları", systemImage: "bell")
+            }
+            .buttonStyle(.plain)
+            NavigationLink {
+                ChangePasswordView(
+                    viewModel: ChangePasswordViewModel(accountService: viewModel.accountService)
+                )
+            } label: {
+                ProfileNavigationRow(title: "Şifre / Güvenlik", systemImage: "lock")
+            }
+            .buttonStyle(.plain)
+            InfoRow(title: "Dil", value: "Türkçe", systemImage: "globe")
             Text(AdminUnsupportedAction.message)
                 .font(AppFont.caption)
                 .foregroundStyle(AppColor.secondaryText)

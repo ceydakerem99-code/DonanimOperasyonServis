@@ -403,6 +403,22 @@ final class SwiftDataSyncOperationRepositoryTests: XCTestCase {
         XCTAssertEqual(keptProgress.status, .inProgress)
     }
 
+    func testDeleteFailedRemovesOnlyRequestedFailedRows() async throws {
+        let harness = try SwiftDataTestHarness()
+        let failed = try makeOperation(id: "del-f", entityId: "e-df", createdAt: now)
+        let pending = try makeOperation(id: "keep-p2", entityId: "e-kp2", createdAt: now)
+        try await harness.syncOperations.enqueue(failed)
+        try await harness.syncOperations.enqueue(pending)
+        try await fail(failed, through: harness, retryCount: 1, nextRetryAt: nil)
+
+        try await harness.syncOperations.deleteFailed(ids: [failed.id])
+        await XCTAssertThrowsErrorAsync(
+            try await harness.syncOperations.fetch(id: failed.id)
+        ) { _ in }
+        let kept = try await harness.syncOperations.fetch(id: pending.id)
+        XCTAssertEqual(kept.status, .pending)
+    }
+
     func testDeleteFailedAndConflictIndividuallyIsRejected() async throws {
         let harness = try SwiftDataTestHarness()
         let failed = try makeOperation(id: "no-del-f", entityId: "e-ndf", createdAt: now)

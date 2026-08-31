@@ -6,6 +6,7 @@ enum WorkOrderPresentationMapping {
         switch status {
         case .assigned:   return .assigned
         case .accepted:   return .accepted
+        case .rejected:   return .rejected
         case .enRoute:    return .enRoute
         case .arrived:    return .arrived
         case .inProgress: return .inProgress
@@ -26,6 +27,7 @@ enum WorkOrderPresentationMapping {
         switch status {
         case .assigned:   return 1
         case .accepted:   return 2
+        case .rejected:   return 1
         case .enRoute:    return 3
         case .arrived:    return 4
         case .inProgress: return 5
@@ -46,7 +48,9 @@ enum WorkOrderPresentationMapping {
     static func cardData(
         from order: WorkOrder,
         customerName: String,
-        technicianName: String?
+        technicianName: String?,
+        now: Date = Date(),
+        calendar: Calendar = .current
     ) -> WorkOrderCardData {
         WorkOrderCardData(
             id: order.id.rawValue,
@@ -56,10 +60,26 @@ enum WorkOrderPresentationMapping {
             deviceLabel: order.deviceCategory.displayName,
             status: appStatus(from: order.status),
             priority: appPriority(from: order.priority),
+            timeStatus: WorkOrderTimeStatusPolicy.timeStatus(for: order, now: now, calendar: calendar),
             plannedDateLabel: formatDate(order.scheduledDate),
             plannedTimeLabel: formatTimeRange(order.scheduledTimeRange, fallback: order.scheduledDate),
             technicianName: technicianName
         )
+    }
+
+    static func plannedScheduleLabel(for order: WorkOrder) -> String {
+        if let range = order.scheduledTimeRange {
+            return "\(formatDate(order.scheduledDate)) · \(formatTime(range.start)) – \(formatTime(range.end))"
+        }
+        return formatDateTime(order.scheduledDate)
+    }
+
+    static func timeStatus(
+        for order: WorkOrder,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> WorkOrderTimeStatus? {
+        WorkOrderTimeStatusPolicy.timeStatus(for: order, now: now, calendar: calendar)
     }
 
     static func formatDate(_ date: Date) -> String {
@@ -87,9 +107,23 @@ enum WorkOrderPresentationMapping {
         switch status {
         case .accepted, .enRoute, .arrived, .inProgress:
             return true
-        case .assigned, .paused, .completed:
+        case .assigned, .rejected, .paused, .completed:
             return false
         }
+    }
+
+    /// Inclusive calendar-day check on `WorkOrder.scheduledDate`.
+    static func isScheduled(onDayOf reference: Date, date: Date, calendar: Calendar = .current) -> Bool {
+        calendar.isDate(date, inSameDayAs: reference)
+    }
+
+    static func scheduledDayBounds(
+        for reference: Date = Date(),
+        calendar: Calendar = .current
+    ) -> (from: Date, to: Date) {
+        let start = calendar.startOfDay(for: reference)
+        let end = calendar.date(byAdding: DateComponents(day: 1, second: -1), to: start) ?? start
+        return (start, end)
     }
 }
 

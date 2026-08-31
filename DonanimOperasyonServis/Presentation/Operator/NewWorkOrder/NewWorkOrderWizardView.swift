@@ -15,14 +15,19 @@ struct NewWorkOrderWizardView: View {
             .padding(.horizontal, AppSpacing.l)
             .padding(.vertical, AppSpacing.m)
 
-            if viewModel.isOffline {
-                offlineBanner
-            }
-
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.l) {
                     if case .error(let message) = viewModel.phase {
                         ErrorBanner(title: "Form hatası", message: message)
+                    }
+                    if let message = viewModel.templateUnavailableMessage {
+                        ErrorBanner(title: "Şablon", message: message)
+                    }
+                    if viewModel.currentStep == 1 {
+                        templateStartSection
+                    }
+                    if let appliedName = viewModel.appliedTemplateName {
+                        appliedTemplateBanner(appliedName)
                     }
 
                     stepContent
@@ -46,18 +51,45 @@ struct NewWorkOrderWizardView: View {
                 onFinished(id)
             }
         }
+        .sheet(isPresented: $viewModel.showsTemplatePicker) {
+            WorkOrderTemplatePickerView(
+                listViewModel: viewModel.templateListViewModel,
+                actor: viewModel.templatePickerActor,
+                service: viewModel.templatePickerService,
+                onSelect: { viewModel.applyTemplate($0) },
+                onDismiss: { viewModel.showsTemplatePicker = false }
+            )
+        }
     }
 
-    private var offlineBanner: some View {
-        HStack(spacing: AppSpacing.s) {
-            Image(systemName: "wifi.slash")
-            Text("Çevrimdışı — iş emri yerelde kaydedilecek ve senkronizasyon bekleyecek.")
-                .font(AppFont.caption)
+    private var templateStartSection: some View {
+        SecondaryButton(title: "Şablondan Başla", systemImage: "doc.on.doc") {
+            viewModel.openTemplatePicker()
         }
-        .foregroundStyle(AppColor.warning)
+    }
+
+    private func appliedTemplateBanner(_ name: String) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            HStack {
+                Label("Şablon: \(name)", systemImage: "doc.on.doc")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.secondaryText)
+                Spacer()
+                Button("Temizle") { viewModel.clearAppliedTemplate() }
+                    .font(AppFont.label)
+                    .foregroundStyle(AppColor.brandPrimary)
+            }
+            if let summary = viewModel.appliedTemplateFieldSummary {
+                Text(summary)
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.primaryText)
+            }
+        }
         .padding(AppSpacing.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColor.warning.opacity(0.08))
+        .background(
+            RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                .fill(AppColor.brandPrimary.opacity(0.08))
+        )
     }
 
     @ViewBuilder
@@ -194,14 +226,15 @@ struct NewWorkOrderWizardView: View {
                 .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.elevatedSurface))
 
             ForEach(viewModel.filteredTechnicians) { tech in
-                selectionCard(
+                TechnicianAssignmentOptionCard(
                     title: tech.fullName,
-                    subtitle: tech.email,
-                    systemImage: "person.crop.circle",
-                    selected: viewModel.draft.technician?.id == tech.id
-                ) {
-                    viewModel.selectTechnician(tech)
-                }
+                    workingStatus: viewModel.workingStatus(for: tech),
+                    workload: viewModel.workload(for: tech),
+                    isRecommended: viewModel.isRecommended(tech),
+                    isSelected: viewModel.draft.technician?.id == tech.id,
+                    locationLabel: viewModel.locationLabel(for: tech),
+                    action: { viewModel.selectTechnician(tech) }
+                )
             }
         }
     }
@@ -225,12 +258,6 @@ struct NewWorkOrderWizardView: View {
             summaryRow("Öncelik", viewModel.draft.priority.displayName)
             summaryRow("Planlanan", WorkOrderPresentationMapping.formatDateTime(viewModel.draft.scheduledDate))
             summaryRow("Teknisyen", viewModel.draft.technician?.fullName)
-
-            if viewModel.isOffline {
-                Label("Kaydedildi · Senkronizasyon bekliyor", systemImage: "arrow.triangle.2.circlepath")
-                    .font(AppFont.caption)
-                    .foregroundStyle(AppColor.info)
-            }
         }
     }
 
