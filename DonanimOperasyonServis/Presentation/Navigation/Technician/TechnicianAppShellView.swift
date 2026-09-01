@@ -12,6 +12,7 @@ struct TechnicianAppShellView: View {
     @State private var homeViewModel: TechnicianHomeViewModel
     @State private var workOrderListViewModel: TechnicianWorkOrderListViewModel
     @State private var notificationListViewModel: TechnicianNotificationListViewModel
+    @State private var workOrderDetailCache: TechnicianWorkOrderDetailViewModelCache
 
     init(
         user: User,
@@ -23,9 +24,21 @@ struct TechnicianAppShellView: View {
         self.dependencies = dependencies
         self.syncProgressStore = syncProgressStore
         self.onLogout = onLogout
+        let locationSampler: LocationSampling = {
+            #if DEBUG
+            DebugLocationSettings.makeSampler()
+            #else
+            CoreLocationSampler()
+            #endif
+        }()
         _homeViewModel = State(initialValue: TechnicianHomeViewModel(actor: user, dependencies: dependencies))
         _workOrderListViewModel = State(initialValue: TechnicianWorkOrderListViewModel(actor: user, dependencies: dependencies))
         _notificationListViewModel = State(initialValue: TechnicianNotificationListViewModel(actor: user, dependencies: dependencies))
+        _workOrderDetailCache = State(initialValue: TechnicianWorkOrderDetailViewModelCache(
+            actor: user,
+            dependencies: dependencies,
+            locationSampler: locationSampler
+        ))
     }
 
     var body: some View {
@@ -119,18 +132,7 @@ struct TechnicianAppShellView: View {
         switch destination {
         case .workOrderDetail(let id):
             TechnicianWorkOrderDetailView(
-                viewModel: TechnicianWorkOrderDetailViewModel(
-                    workOrderId: id,
-                    actor: user,
-                    dependencies: dependencies,
-                    locationSampler: {
-                        #if DEBUG
-                        DebugLocationSettings.makeSampler()
-                        #else
-                        CoreLocationSampler()
-                        #endif
-                    }()
-                ),
+                viewModel: workOrderDetailCache.viewModel(for: id),
                 onShowReport: { router.push(.serviceReport($0)) }
             )
         case .serviceReport(let id):

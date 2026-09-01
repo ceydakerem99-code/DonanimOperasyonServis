@@ -5,6 +5,7 @@ import UIKit
 struct TechnicianWorkOrderDetailView: View {
     @Bindable var viewModel: TechnicianWorkOrderDetailViewModel
     var onShowReport: (WorkOrderID) -> Void
+    @Environment(\.diContainer) private var container
 
     @State private var noteText = ""
     @State private var selectedPauseReason: PauseReason = .partWaiting
@@ -48,9 +49,15 @@ struct TechnicianWorkOrderDetailView: View {
                 }
             }
         }
+        .id(viewModel.workOrderId)
         .navigationTitle("İş Emri Detayı")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.load() }
+        .onAppear { viewModel.prepareForAppearance() }
+        .onDisappear { viewModel.stopLoad() }
+        .onChange(of: container.syncProgressStore.isSyncing) { wasSyncing, isSyncing in
+            guard wasSyncing == true, isSyncing == false else { return }
+            Task { await viewModel.refreshSyncIndicatorIfNeeded() }
+        }
         .sheet(isPresented: Binding(
             get: { viewModel.showPauseSheet },
             set: { viewModel.setPauseSheetVisible($0) }
@@ -200,6 +207,13 @@ struct TechnicianWorkOrderDetailView: View {
             .padding(AppSpacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: AppRadius.card).fill(AppColor.info.opacity(0.08)))
+            #if DEBUG
+            .onAppear {
+                AppLogger.sync.info(
+                    "DETAIL SYNC BANNER workOrderId=\(content.workOrder.id.rawValue, privacy: .public) label=\(label, privacy: .public)"
+                )
+            }
+            #endif
         }
     }
 

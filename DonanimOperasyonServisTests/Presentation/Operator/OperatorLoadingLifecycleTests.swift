@@ -264,3 +264,119 @@ final class AsyncLoadSettlementTests: XCTestCase {
         XCTAssertNil(result)
     }
 }
+
+@MainActor
+final class OperatorWorkOrderDetailLifecycleTests: XCTestCase {
+
+    func testDetailReloadsAfterWorkOrderCompletion() async throws {
+        let container = DIContainer.mock()
+        let deps = container.makeOperatorDependencies()
+        let operatorUser = DomainFixtures.operatorUser()
+        let technician = DomainFixtures.technicianUser()
+        let customer = DomainFixtures.customer(createdByUserId: operatorUser.id)
+        var order = DomainFixtures.workOrder(
+            assignedTechnicianId: technician.id,
+            customerId: customer.id,
+            status: .accepted
+        )
+
+        try await deps.userRepository.save(operatorUser)
+        try await deps.userRepository.save(technician)
+        try await deps.customerRepository.save(customer)
+        try await container.workOrderRepository.save(order)
+
+        let vm = OperatorWorkOrderDetailViewModel(
+            workOrderId: order.id,
+            actor: operatorUser,
+            dependencies: deps
+        )
+        await vm.load()
+        XCTAssertEqual(vm.phase, .loaded)
+        XCTAssertEqual(vm.content?.workOrder.status, .accepted)
+
+        order.status = .completed
+        order.completedAt = DomainFixtures.referenceDate
+        try await container.workOrderRepository.save(order)
+
+        vm.stopLoad()
+        await vm.load()
+
+        XCTAssertEqual(vm.phase, .loaded)
+        XCTAssertEqual(vm.content?.workOrder.status, .completed)
+    }
+
+    func testDetailSurvivesImmediateLoadCancellationAndReopens() async throws {
+        let container = DIContainer.mock()
+        let deps = container.makeOperatorDependencies()
+        let operatorUser = DomainFixtures.operatorUser()
+        let technician = DomainFixtures.technicianUser()
+        let customer = DomainFixtures.customer(createdByUserId: operatorUser.id)
+        let order = DomainFixtures.workOrder(
+            assignedTechnicianId: technician.id,
+            customerId: customer.id
+        )
+
+        try await deps.userRepository.save(operatorUser)
+        try await deps.userRepository.save(technician)
+        try await deps.customerRepository.save(customer)
+        try await container.workOrderRepository.save(order)
+
+        let vm = OperatorWorkOrderDetailViewModel(
+            workOrderId: order.id,
+            actor: operatorUser,
+            dependencies: deps
+        )
+
+        let first = Task { await vm.load() }
+        first.cancel()
+        await first.value
+        XCTAssertNotEqual(vm.phase, .loading)
+
+        vm.stopLoad()
+        vm.startLoad()
+        while vm.phase == .loading {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(vm.phase, .loaded)
+        XCTAssertEqual(vm.content?.workOrder.id, order.id)
+    }
+
+    func testDetailLoadSurvivesRepeatedShellStyleCancellation() async throws {
+        let container = DIContainer.mock()
+        let deps = container.makeOperatorDependencies()
+        let operatorUser = DomainFixtures.operatorUser()
+        let technician = DomainFixtures.technicianUser()
+        let customer = DomainFixtures.customer(createdByUserId: operatorUser.id)
+        let order = DomainFixtures.workOrder(
+            assignedTechnicianId: technician.id,
+            customerId: customer.id
+        )
+
+        try await deps.userRepository.save(operatorUser)
+        try await deps.userRepository.save(technician)
+        try await deps.customerRepository.save(customer)
+        try await container.workOrderRepository.save(order)
+
+        let vm = OperatorWorkOrderDetailViewModel(
+            workOrderId: order.id,
+            actor: operatorUser,
+            dependencies: deps
+        )
+
+        for _ in 0..<5 {
+            vm.startLoad()
+            try await Task.sleep(for: .milliseconds(5))
+            vm.stopLoad()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        vm.startLoad()
+        while vm.phase == .loading {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(vm.phase, .loaded)
+        XCTAssertEqual(vm.content?.workOrder.id, order.id)
+    }
+}

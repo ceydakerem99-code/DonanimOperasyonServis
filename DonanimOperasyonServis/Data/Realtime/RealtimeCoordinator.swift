@@ -30,7 +30,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
     }
 
     private let flags = OSAllocatedUnfairLock(initialState: SessionFlags())
-    private var reconnectTask: Task<Void, Never>?
+    private let reconnectTaskLock = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
     private var reachabilityObservationTask: Task<Void, Never>?
 #if DEBUG
     private var simulatedOfflineObservationTask: Task<Void, Never>?
@@ -72,8 +72,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
 #endif
 
     func handleAuthenticatedSession() {
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        clearReconnectTask()
         flags.withLock {
             $0.wantsConnection = true
             $0.reconnectAttempt = 0
@@ -90,8 +89,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
             $0.wantsConnection = false
             $0.sessionGeneration += 1
         }
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        clearReconnectTask()
         reachabilityObservationTask?.cancel()
         reachabilityObservationTask = nil
 #if DEBUG
@@ -120,8 +118,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
             flags.sessionGeneration += 1
             return flags.wantsConnection
         }
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        clearReconnectTask()
         Task {
             await client.disconnect()
             if wants {
@@ -241,24 +238,44 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         }
     }
 
-    /// DEBUG/smoke: submit a single shadow customer create (no Firebase mutation).
+    /// DEBUG/smoke: submit a role-appropriate shadow operation (no Firebase mutation).
     func sendShadowProbe() async {
         guard connectionState == .connected, let uid = authService.currentUID else { return }
+        let role = resolvedShadowRole()
+        if role == UserRole.technician.rawValue {
+            await sendTechnicianShadowProbe(actorUserId: uid)
+        } else {
+            await sendOperatorShadowProbe(actorUserId: uid)
+        }
+    }
+
+    private func resolvedShadowRole() -> String? {
+        telemetry.lastHelloRole?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private func isTechnicianShadowRole() -> Bool {
+        resolvedShadowRole() == UserRole.technician.rawValue
+    }
+
+    private func sendOperatorShadowProbe(actorUserId: String) async {
         let entityId = "shadow-probe-\(UUID().uuidString)"
         let operationId = UUID().uuidString
-        let key = "\(uid):customer:\(entityId):create:1"
+        let key = "\(actorUserId):customer:\(entityId):create:1"
         do {
-            let data = try RealtimeProtocolCodec.makeShadowOpSubmit(
+            let ack = try await submitAndAwaitAck(
                 operationId: operationId,
                 idempotencyKey: key,
                 entityType: "customer",
                 entityId: entityId,
                 operationType: "create",
-                actorUserId: uid,
-                deviceId: configuration.deviceId
+                actorUserId: actorUserId,
+                payload: ["id": entityId, "shadow": true]
             )
-            try await client.send(data: data)
-            AppLogger.realtime.info("REALTIME SHADOW_PROBE_SENT entityId=\(entityId, privacy: .public)")
+            AppLogger.realtime.info(
+                "REALTIME SHADOW_PROBE_SENT entityType=customer entityId=\(entityId, privacy: .public) ack=\(ack, privacy: .public)"
+            )
         } catch {
             AppLogger.realtime.error(
                 "REALTIME ERROR shadowProbe=\(error.localizedDescription, privacy: .public)"
@@ -266,7 +283,31 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         }
     }
 
-    /// DEBUG real-gateway smoke: 1 customer + 1 workOrder create, then duplicate customer submit.
+    private func sendTechnicianShadowProbe(actorUserId: String) async {
+        let entityId = "shadow-probe-\(UUID().uuidString)"
+        let operationId = UUID().uuidString
+        let key = "\(actorUserId):workOrder:\(entityId):update:1"
+        do {
+            let ack = try await submitAndAwaitAck(
+                operationId: operationId,
+                idempotencyKey: key,
+                entityType: "workOrder",
+                entityId: entityId,
+                operationType: "update",
+                actorUserId: actorUserId,
+                payload: ["id": entityId, "shadow": true]
+            )
+            AppLogger.realtime.info(
+                "REALTIME SHADOW_PROBE_SENT entityType=workOrder entityId=\(entityId, privacy: .public) ack=\(ack, privacy: .public)"
+            )
+        } catch {
+            AppLogger.realtime.error(
+                "REALTIME ERROR shadowProbe=\(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    /// DEBUG real-gateway smoke: role-appropriate shadow ops + duplicate submit.
     /// Does not touch SwiftData, Firestore, or SyncOperation.
     @discardableResult
     func runShadowSmokeSequence() async -> RealtimeShadowSmokeReport {
@@ -277,14 +318,21 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
             return failSmoke("Not connected — login with Live Firebase Auth and wait for 🟢 Connected")
         }
 
+        if isTechnicianShadowRole() {
+            return await runTechnicianShadowSmokeSequence(actorUserId: uid)
+        }
+        return await runOperatorShadowSmokeSequence(actorUserId: uid)
+    }
+
+    private func runOperatorShadowSmokeSequence(actorUserId: String) async -> RealtimeShadowSmokeReport {
         let suffix = UUID().uuidString.lowercased()
         let customerId = "shadow-smoke-customer-\(suffix)"
         let workOrderId = "shadow-smoke-workorder-\(suffix)"
         let customerOpId = UUID().uuidString
         let workOrderOpId = UUID().uuidString
         let duplicateOpId = UUID().uuidString
-        let customerKey = "\(uid):customer:\(customerId):create:1"
-        let workOrderKey = "\(uid):workOrder:\(workOrderId):create:1"
+        let customerKey = "\(actorUserId):customer:\(customerId):create:1"
+        let workOrderKey = "\(actorUserId):workOrder:\(workOrderId):create:1"
 
         do {
             let customerAck = try await submitAndAwaitAck(
@@ -293,7 +341,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
                 entityType: "customer",
                 entityId: customerId,
                 operationType: "create",
-                actorUserId: uid,
+                actorUserId: actorUserId,
                 payload: ["id": customerId, "shadow": true]
             )
             guard customerAck == "accepted" else {
@@ -310,7 +358,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
                 entityType: "workOrder",
                 entityId: workOrderId,
                 operationType: "create",
-                actorUserId: uid,
+                actorUserId: actorUserId,
                 payload: ["id": workOrderId, "shadow": true]
             )
             guard workOrderAck == "accepted" else {
@@ -329,7 +377,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
                 entityType: "customer",
                 entityId: customerId,
                 operationType: "create",
-                actorUserId: uid,
+                actorUserId: actorUserId,
                 payload: ["id": customerId, "shadow": true]
             )
             guard duplicateAck == "duplicate" else {
@@ -362,6 +410,95 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
                 "smoke failed: \(error.localizedDescription)",
                 customerEntityId: customerId,
                 workOrderEntityId: workOrderId
+            )
+        }
+    }
+
+    private func runTechnicianShadowSmokeSequence(actorUserId: String) async -> RealtimeShadowSmokeReport {
+        let suffix = UUID().uuidString.lowercased()
+        let probeId = "shadow-probe-smoke-\(suffix)"
+        let secondProbeId = "shadow-probe-smoke-2-\(suffix)"
+        let firstOpId = UUID().uuidString
+        let secondOpId = UUID().uuidString
+        let duplicateOpId = UUID().uuidString
+        let firstKey = "\(actorUserId):workOrder:\(probeId):update:1"
+
+        do {
+            let probeAck = try await submitAndAwaitAck(
+                operationId: firstOpId,
+                idempotencyKey: firstKey,
+                entityType: "workOrder",
+                entityId: probeId,
+                operationType: "update",
+                actorUserId: actorUserId,
+                payload: ["id": probeId, "shadow": true]
+            )
+            guard probeAck == "accepted" else {
+                return failSmoke(
+                    "probe ACK=\(probeAck) (expected accepted)",
+                    customerAck: probeAck,
+                    customerEntityId: probeId
+                )
+            }
+
+            let secondAck = try await submitAndAwaitAck(
+                operationId: secondOpId,
+                idempotencyKey: "\(actorUserId):workOrder:\(secondProbeId):update:1",
+                entityType: "workOrder",
+                entityId: secondProbeId,
+                operationType: "update",
+                actorUserId: actorUserId,
+                payload: ["id": secondProbeId, "shadow": true]
+            )
+            guard secondAck == "accepted" else {
+                return failSmoke(
+                    "second probe ACK=\(secondAck) (expected accepted)",
+                    customerAck: probeAck,
+                    workOrderAck: secondAck,
+                    customerEntityId: probeId,
+                    workOrderEntityId: secondProbeId
+                )
+            }
+
+            let duplicateAck = try await submitAndAwaitAck(
+                operationId: duplicateOpId,
+                idempotencyKey: firstKey,
+                entityType: "workOrder",
+                entityId: probeId,
+                operationType: "update",
+                actorUserId: actorUserId,
+                payload: ["id": probeId, "shadow": true]
+            )
+            guard duplicateAck == "duplicate" else {
+                return failSmoke(
+                    "duplicate ACK=\(duplicateAck) (expected duplicate)",
+                    customerAck: probeAck,
+                    workOrderAck: secondAck,
+                    duplicateAck: duplicateAck,
+                    customerEntityId: probeId,
+                    workOrderEntityId: secondProbeId
+                )
+            }
+
+            let report = RealtimeShadowSmokeReport(
+                customerAck: probeAck,
+                workOrderAck: secondAck,
+                duplicateAck: duplicateAck,
+                customerEntityId: probeId,
+                workOrderEntityId: secondProbeId,
+                succeeded: true,
+                detail: "Technician shadow smoke OK — workOrder.update probes only"
+            )
+            mutateTelemetry { $0.lastSmokeReport = report }
+            AppLogger.realtime.info(
+                "REALTIME SMOKE_OK technician probe=\(probeId, privacy: .public)"
+            )
+            return report
+        } catch {
+            return failSmoke(
+                "smoke failed: \(error.localizedDescription)",
+                customerEntityId: probeId,
+                workOrderEntityId: secondProbeId
             )
         }
     }
@@ -468,8 +605,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         let snapshot = flags.withLock { $0 }
         guard snapshot.wantsConnection, snapshot.isAppActive else { return }
         guard let url = resolvedWebSocketURL(), RealtimeGatewayConfiguration.isAllowedOnCurrentRuntime(url) else {
-            reconnectTask?.cancel()
-            reconnectTask = nil
+            clearReconnectTask()
             setState(.disconnected)
             let host = resolvedWebSocketURL()?.host ?? "missing"
             AppLogger.realtime.info("REALTIME SKIP reason=unreachable_gateway host=\(host, privacy: .public)")
@@ -659,8 +795,7 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         }
 
         guard resolvedWebSocketURL() != nil else {
-            reconnectTask?.cancel()
-            reconnectTask = nil
+            clearReconnectTask()
             setState(.disconnected)
             return
         }
@@ -677,12 +812,11 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         AppLogger.realtime.info(
             "REALTIME RECONNECT attempt=\(attempt) delay=\(delay, privacy: .public)s"
         )
-        reconnectTask?.cancel()
-        reconnectTask = Task { [weak self] in
+        replaceReconnectTask(with: Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             await self.connectIfNeeded(reason: "backoff")
-        }
+        })
     }
 
     private func setState(_ state: RealtimeConnectionState) {
@@ -747,9 +881,22 @@ final class RealtimeCoordinator: RealtimeCustomerCreateSubmitting, RealtimeWorkO
         }
     }
 
+    private func clearReconnectTask() {
+        reconnectTaskLock.withLock { task in
+            task?.cancel()
+            task = nil
+        }
+    }
+
+    private func replaceReconnectTask(with task: Task<Void, Never>?) {
+        reconnectTaskLock.withLock { state in
+            state?.cancel()
+            state = task
+        }
+    }
+
     private func pauseForNetworkUnavailable(reason: String) async {
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        clearReconnectTask()
         await client.setHandlers(onEnvelope: nil, onTransportClosed: nil)
         await client.disconnect()
         setState(.disconnected)

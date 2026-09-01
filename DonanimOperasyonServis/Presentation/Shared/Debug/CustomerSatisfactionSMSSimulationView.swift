@@ -124,10 +124,22 @@ struct CustomerSatisfactionSMSSimulationView: View {
     private func customerSMSPreviewSection(_ option: CompletedWorkOrderSurveyOption) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.m) {
             SectionHeader(title: "Müşteriye Giden SMS Önizlemesi")
-            CustomerSatisfactionSMSMessagePreview(
-                content: option.smsPreviewContent,
-                onOpenSurvey: openWebSurveyAction(for: option)
-            )
+            if viewModel.showsSentStatus {
+                CustomerSatisfactionSMSMessagePreview(
+                    content: option.smsPreviewContent,
+                    onOpenSurvey: openWebSurveyAction(for: option)
+                )
+            } else {
+                Text("Anket bağlantısı, değerlendirme kaydı Firestore'a yazıldıktan sonra gösterilir.")
+                    .font(AppFont.caption)
+                    .foregroundStyle(AppColor.secondaryText)
+                    .padding(AppSpacing.m)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppRadius.card)
+                            .fill(AppColor.elevatedSurface)
+                    )
+            }
         }
     }
 
@@ -184,7 +196,7 @@ struct CustomerSatisfactionSMSSimulationView: View {
                 }
             }
 
-            Text("Web URL: \(option.smsPreviewContent.surveyLink)")
+            Text("Web URL: \(viewModel.showsSentStatus ? option.smsPreviewContent.surveyLink : "senkronizasyon bekleniyor")")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(AppColor.secondaryText)
                 .textSelection(.enabled)

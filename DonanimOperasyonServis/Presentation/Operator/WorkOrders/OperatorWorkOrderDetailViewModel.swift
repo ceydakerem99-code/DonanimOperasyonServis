@@ -67,6 +67,8 @@ final class OperatorWorkOrderDetailViewModel {
     var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
     var hasCachedContent: Bool { content != nil }
 
+    private var activeLoadTask: Task<Void, Never>?
+
     /// Policy-backed visibility for the assign / reassign action.
     var canAssignTechnician: Bool {
         RoleAccessPolicy.can(.assignWorkOrder, as: actor.role)
@@ -86,32 +88,55 @@ final class OperatorWorkOrderDetailViewModel {
         self.dependencies = dependencies
     }
 
+    /// Starts (or restarts) detail loading from view appearance.
+    /// Uses a ViewModel-owned task so shell/sync re-renders do not cancel
+    /// in-flight fetches the way SwiftUI `.task` does.
+    func startLoad() {
+        activeLoadTask?.cancel()
+        activeLoadTask = Task { @MainActor in
+            await load()
+            if !Task.isCancelled {
+                activeLoadTask = nil
+            }
+        }
+    }
+
+    /// Cancels the in-flight load when the detail screen disappears.
+    func stopLoad() {
+        activeLoadTask?.cancel()
+        activeLoadTask = nil
+    }
+
     func load() async {
         let context = asyncLoad.start(hadCachedContent: hasCachedContent)
         if !context.hadCachedContentAtStart { phase = .loading }
         defer { asyncLoad.finish(generation: context.generation) }
-        let generation = context.generation
+
         do {
             let loaded = try await fetchContentWithDirectoryRefreshIfNeeded()
-            guard asyncLoad.isCurrent(generation) else { return }
-            content = loaded
-            phase = .loaded
+            if content == nil || asyncLoad.isCurrent(context.generation) {
+                content = loaded
+                phase = .loaded
+            }
         } catch is CancellationError {
-            guard asyncLoad.isCurrent(generation) else { return }
+            guard asyncLoad.isCurrent(context.generation) else { return }
+            guard content == nil else { return }
             if let settled = asyncLoad.settleCancelledLoad(
                 context: context,
                 phase: phase,
                 loadingPhase: Phase.loading,
                 loadedPhase: Phase.loaded,
-                emptyPhase: Phase.error("Yükleme iptal edildi. Tekrar deneyin.")
+                emptyPhase: Phase.error("Yükleme iptal edildi.")
             ) {
                 phase = settled
             }
         } catch let error as DomainError {
-            guard asyncLoad.isCurrent(generation) else { return }
+            guard content == nil else { return }
+            guard asyncLoad.isCurrent(context.generation) else { return }
             phase = .error(error.operatorMessage)
         } catch {
-            guard asyncLoad.isCurrent(generation) else { return }
+            guard content == nil else { return }
+            guard asyncLoad.isCurrent(context.generation) else { return }
             phase = .error("İş emri detayı yüklenemedi.")
         }
     }
@@ -324,10 +349,10 @@ final class OperatorWorkOrderDetailViewModel {
         let locations = (try? await dependencies.workOrderLocationRepository.list(for: order.id)) ?? []
         let signatures = (try? await dependencies.signatureRepository.list(for: order.id)) ?? []
         let editRequests = (try? await dependencies.editRequestRepository.list(for: order.id)) ?? []
-        let pendingOps = try await dependencies.syncOperationRepository.list(
+        let pendingOps = (try? await dependencies.syncOperationRepository.list(
             entityType: .workOrder,
             entityId: order.id.rawValue
-        )
+        )) ?? []
         let relatedPending = pendingOps.filter { $0.status == .pending || $0.status == .failed }.count
 
         return OperatorWorkOrderDetailContent(

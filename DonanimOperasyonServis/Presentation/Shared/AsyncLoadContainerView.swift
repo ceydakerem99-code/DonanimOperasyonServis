@@ -22,7 +22,7 @@ struct AsyncLoadContainerView<Content: View, Empty: View>: View {
                 content()
             } else if isEmpty && !isLoading {
                 empty()
-            } else if isLoading && showsLoadingIndicator {
+            } else if isLoading {
                 LoadingView(message: loadingMessage)
             } else {
                 Color.clear

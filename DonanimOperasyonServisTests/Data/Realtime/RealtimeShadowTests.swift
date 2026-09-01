@@ -368,6 +368,75 @@ final class RealtimeShadowTests: XCTestCase {
         XCTAssertEqual(coordinator.telemetry.receivedAckCount, 3)
     }
 
+    func testTechnicianShadowSmokeSequenceUsesWorkOrderProbeOnly() async throws {
+        let auth = FakeFirebaseAuthService()
+        auth.setUID("uid-tech-1")
+        let transport = FakeRealtimeWebSocketTransport()
+        await transport.setAutoAcceptOps(true)
+        await transport.setAutoHelloOk(false)
+        let coordinator = RealtimeCoordinator(
+            authService: auth,
+            configuration: RealtimeGatewayConfiguration(
+                isEnabled: true,
+                webSocketURL: URL(string: "ws://127.0.0.1:5088/ws"),
+                deviceId: "smoke-device",
+                heartbeatInterval: 60,
+                initialReconnectDelay: 1,
+                maxReconnectDelay: 1
+            ),
+            transport: transport
+        )
+        coordinator.handleAuthenticatedSession()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let helloOk = try JSONSerialization.data(withJSONObject: [
+            "v": 1,
+            "type": "hello.ok",
+            "payload": ["userId": "uid-tech-1", "role": "technician"]
+        ])
+        await transport.enqueueInbound(helloOk)
+        try await waitUntil(timeout: 2) { coordinator.connectionState == .connected }
+
+        let report = await coordinator.runShadowSmokeSequence()
+        XCTAssertTrue(report.succeeded, report.detail)
+        XCTAssertEqual(report.customerAck, "accepted")
+        XCTAssertEqual(report.workOrderAck, "accepted")
+        XCTAssertEqual(report.duplicateAck, "duplicate")
+        XCTAssertTrue(report.customerEntityId?.hasPrefix("shadow-probe-smoke-") == true)
+    }
+
+    func testTechnicianShadowProbeAwaitAck() async throws {
+        let auth = FakeFirebaseAuthService()
+        auth.setUID("uid-tech-1")
+        let transport = FakeRealtimeWebSocketTransport()
+        await transport.setAutoAcceptOps(true)
+        await transport.setAutoHelloOk(false)
+        let coordinator = RealtimeCoordinator(
+            authService: auth,
+            configuration: RealtimeGatewayConfiguration(
+                isEnabled: true,
+                webSocketURL: URL(string: "ws://127.0.0.1:5088/ws"),
+                deviceId: "probe-device",
+                heartbeatInterval: 60,
+                initialReconnectDelay: 1,
+                maxReconnectDelay: 1
+            ),
+            transport: transport
+        )
+        coordinator.handleAuthenticatedSession()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let helloOk = try JSONSerialization.data(withJSONObject: [
+            "v": 1,
+            "type": "hello.ok",
+            "payload": ["userId": "uid-tech-1", "role": "technician"]
+        ])
+        await transport.enqueueInbound(helloOk)
+        try await waitUntil(timeout: 2) { coordinator.connectionState == .connected }
+
+        await coordinator.sendShadowProbe()
+        try await waitUntil(timeout: 2) { coordinator.telemetry.lastAckStatus == "accepted" }
+        XCTAssertEqual(coordinator.telemetry.lastAckStatus, "accepted")
+    }
+
     private func waitUntil(
         timeout: TimeInterval,
         file: StaticString = #filePath,

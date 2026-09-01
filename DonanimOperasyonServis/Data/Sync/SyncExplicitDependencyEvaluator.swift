@@ -55,6 +55,12 @@ enum SyncExplicitDependencyEvaluator {
                 queue: queue,
                 local: local
             )
+        case .customerSatisfaction:
+            return try await inferPrunedCustomerSatisfactionDependency(
+                dependent: dependent,
+                queue: queue,
+                local: local
+            )
         default:
             return false
         }
@@ -98,5 +104,36 @@ enum SyncExplicitDependencyEvaluator {
             return false
         }
         return localOrder.assignedTechnicianId == notification.recipientUserId
+    }
+
+    /// Customer-satisfaction create waits on the work-order completion
+    /// update. When that dependency row was pruned post-success, verify the
+    /// local survey exists, the parent order is completed locally, and no
+    /// open work-order update remains in the queue.
+    private static func inferPrunedCustomerSatisfactionDependency(
+        dependent: SyncOperation,
+        queue: any SyncOperationRepository,
+        local: SyncEntityRepositories
+    ) async throws -> Bool {
+        guard dependent.operationType == .create || dependent.operationType == .update else {
+            return false
+        }
+        let satisfactionId = CustomerSatisfactionID(dependent.entityId)
+        guard let satisfaction = try? await local.customerSatisfactions.fetch(id: satisfactionId) else {
+            return false
+        }
+        guard let localOrder = try? await local.workOrders.fetch(id: satisfaction.workOrderId),
+              localOrder.status == .completed else {
+            return false
+        }
+
+        let workOrderOps = try await queue.list(
+            entityType: .workOrder,
+            entityId: satisfaction.workOrderId.rawValue
+        )
+        let openWorkOrderUpdates = workOrderOps.filter {
+            $0.operationType == .update && $0.status != .succeeded
+        }
+        return openWorkOrderUpdates.isEmpty
     }
 }

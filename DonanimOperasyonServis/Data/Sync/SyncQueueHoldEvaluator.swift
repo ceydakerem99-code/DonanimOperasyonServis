@@ -171,26 +171,11 @@ enum SyncQueueHoldEvaluator {
         queue: any SyncOperationRepository,
         local: SyncEntityRepositories
     ) async throws -> Bool {
-        guard operation.entityType == .workOrder, operation.operationType == .update else {
-            return false
-        }
-        let orderId = WorkOrderID(operation.entityId)
-        guard let order = try? await local.workOrders.fetch(id: orderId),
-              order.status == .completed else {
-            return false
-        }
-        let completedLocations = try await local.locations.list(for: orderId)
-            .filter { $0.event == .completed }
-        guard !completedLocations.isEmpty else { return false }
-
-        for location in completedLocations {
-            let createOps = try await queue.list(
-                entityType: .workOrderLocation,
-                entityId: location.id
-            ).filter { $0.operationType == .create }
-            guard !createOps.isEmpty else { return true }
-            guard createOps.allSatisfy({ $0.status == .succeeded }) else { return true }
-        }
-        return false
+        try await SyncCompletionGPSOrdering.shouldHoldForCompletedGPS(
+            operation: operation,
+            queue: queue,
+            local: local,
+            now: Date()
+        )
     }
 }

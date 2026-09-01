@@ -64,7 +64,7 @@ extension DIContainer {
                     syncOperationRepository: syncOperationRepository,
                     workOrderRepository: workOrderRepository,
                     customerRepository: customerRepository,
-                    syncManager: syncManager,
+                    syncLifecycle: syncCoordinator,
                     remoteCustomerSatisfactionRepository: remoteCustomerSatisfactionRepository,
                     networkReachability: networkReachability
                 ),

@@ -24,9 +24,11 @@ struct OperatorWorkOrderDetailView: View {
                 }
             }
         }
+        .id(viewModel.workOrderId)
         .navigationTitle("İş Emri Detayı")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: viewModel.workOrderId) { await viewModel.load() }
+        .onAppear { viewModel.startLoad() }
+        .onDisappear { viewModel.stopLoad() }
         .sheet(
             isPresented: Binding(
                 get: { viewModel.showsAssignSheet },

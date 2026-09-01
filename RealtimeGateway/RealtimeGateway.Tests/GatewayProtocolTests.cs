@@ -230,6 +230,57 @@ public sealed class GatewayProtocolTests : IClassFixture<GatewayWebApplicationFa
         Assert.Equal(AckStatuses.Accepted, ack.Status);
     }
 
+    [Fact]
+    public async Task Technician_shadow_probe_update_is_accepted()
+    {
+        var token = _factory.TokenVerifier.IssueToken("uid-tech-1", UserRoles.Technician);
+        using var ws = await WsTestClient.ConnectAsync(_factory);
+        Assert.Equal(MessageTypes.HelloOk, (await WsTestClient.HelloAsync(ws, token)).Type);
+
+        var op = new OperationSubmitPayload
+        {
+            OperationId = Guid.NewGuid().ToString("D"),
+            IdempotencyKey = "uid-tech-1:workOrder:shadow-probe-test:update:1",
+            EntityType = EntityTypes.WorkOrder,
+            EntityId = "shadow-probe-test",
+            OperationType = OperationTypes.Update,
+            LocalVersion = 1,
+            BaseRemoteVersion = null,
+            ActorUserId = "uid-tech-1",
+            DeviceId = "test-device",
+            ClientTimestamp = DateTimeOffset.UtcNow.UtcDateTime.ToString("o"),
+            Payload = JsonSerializer.SerializeToElement(new { id = "shadow-probe-test", shadow = true }, GatewayJson.Options)
+        };
+        await WsTestClient.SendAsync(ws, OpEnvelope(op));
+        var ack = WsTestClient.Payload<OpAckPayload>(await WsTestClient.ReceiveAsync(ws));
+        Assert.Equal(AckStatuses.Accepted, ack.Status);
+    }
+
+    [Fact]
+    public async Task Technician_customer_create_remains_forbidden_even_with_shadow_prefix_entity()
+    {
+        var token = _factory.TokenVerifier.IssueToken("uid-tech-1", UserRoles.Technician);
+        using var ws = await WsTestClient.ConnectAsync(_factory);
+        Assert.Equal(MessageTypes.HelloOk, (await WsTestClient.HelloAsync(ws, token)).Type);
+
+        var op = new OperationSubmitPayload
+        {
+            OperationId = Guid.NewGuid().ToString("D"),
+            IdempotencyKey = "uid-tech-1:customer:real-customer-1:create:1",
+            EntityType = EntityTypes.Customer,
+            EntityId = "real-customer-1",
+            OperationType = OperationTypes.Create,
+            LocalVersion = 1,
+            ActorUserId = "uid-tech-1",
+            DeviceId = "test-device",
+            ClientTimestamp = DateTimeOffset.UtcNow.UtcDateTime.ToString("o"),
+            Payload = JsonSerializer.SerializeToElement(new { id = "real-customer-1", name = "Test" }, GatewayJson.Options)
+        };
+        await WsTestClient.SendAsync(ws, OpEnvelope(op));
+        var ack = WsTestClient.Payload<OpAckPayload>(await WsTestClient.ReceiveAsync(ws));
+        Assert.Equal(AckStatuses.Forbidden, ack.Status);
+    }
+
     private static GatewayEnvelope OpEnvelope(OperationSubmitPayload op) => new()
     {
         V = ProtocolVersion.Current,

@@ -81,6 +81,13 @@ public sealed class OperationProcessor
                 });
         }
 
+        // Connectivity probes are protocol tests only — accept before role matrix
+        // so technicians never need customer.create for shadow smoke/probe.
+        if (IsConnectivityProbe(operation))
+        {
+            return AcceptConnectivityProbe(connection, operation, now, serverTs);
+        }
+
         if (!AuthorizationPolicy.CanSubmit(connection.Role, operation.EntityType, operation.OperationType))
         {
             return Reject(
@@ -156,6 +163,33 @@ public sealed class OperationProcessor
         }
 
         // FAZ 1 shadow path for non-customer-create operations.
+        var eventId = Guid.NewGuid().ToString("D");
+        var shadowVersion = operation.OperationType == OperationTypes.Delete
+            ? (_versions.Get(operation.EntityType, operation.EntityId) ?? 0)
+            : _versions.PutNext(operation.EntityType, operation.EntityId);
+
+        var receipt = new IdempotencyReceipt(
+            operation.IdempotencyKey,
+            operation.OperationId,
+            eventId,
+            shadowVersion,
+            operation.EntityType,
+            operation.EntityId,
+            now);
+        _idempotency.Put(receipt);
+
+        return BuildAcceptedResult(connection, operation, eventId, shadowVersion, serverTs);
+    }
+
+    private static bool IsConnectivityProbe(OperationSubmitPayload operation) =>
+        operation.EntityId.StartsWith("shadow-probe-", StringComparison.OrdinalIgnoreCase);
+
+    private OperationProcessResult AcceptConnectivityProbe(
+        GatewayConnection connection,
+        OperationSubmitPayload operation,
+        DateTimeOffset now,
+        string serverTs)
+    {
         var eventId = Guid.NewGuid().ToString("D");
         var shadowVersion = operation.OperationType == OperationTypes.Delete
             ? (_versions.Get(operation.EntityType, operation.EntityId) ?? 0)

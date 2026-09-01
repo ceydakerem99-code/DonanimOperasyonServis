@@ -11,7 +11,7 @@ struct TechnicianCustomerSatisfactionService: Sendable {
     let syncOperationRepository: SyncOperationRepository
     let workOrderRepository: WorkOrderRepository
     let customerRepository: CustomerRepository
-    let syncManager: (any SyncManaging)?
+    let syncLifecycle: (any SyncLifecycleCoordinating)?
     let remoteCustomerSatisfactionRepository: (any CustomerSatisfactionRepository)?
     let networkReachability: (any NetworkReachabilityProviding)?
 
@@ -20,7 +20,7 @@ struct TechnicianCustomerSatisfactionService: Sendable {
         syncOperationRepository: SyncOperationRepository,
         workOrderRepository: WorkOrderRepository,
         customerRepository: CustomerRepository,
-        syncManager: (any SyncManaging)? = nil,
+        syncLifecycle: (any SyncLifecycleCoordinating)? = nil,
         remoteCustomerSatisfactionRepository: (any CustomerSatisfactionRepository)? = nil,
         networkReachability: (any NetworkReachabilityProviding)? = nil
     ) {
@@ -28,7 +28,7 @@ struct TechnicianCustomerSatisfactionService: Sendable {
         self.syncOperationRepository = syncOperationRepository
         self.workOrderRepository = workOrderRepository
         self.customerRepository = customerRepository
-        self.syncManager = syncManager
+        self.syncLifecycle = syncLifecycle
         self.remoteCustomerSatisfactionRepository = remoteCustomerSatisfactionRepository
         self.networkReachability = networkReachability
     }
@@ -86,19 +86,36 @@ struct TechnicianCustomerSatisfactionService: Sendable {
         for satisfaction: CustomerSatisfaction,
         at now: Date
     ) async throws {
-        guard let syncManager,
+        guard let syncLifecycle,
               let remoteCustomerSatisfactionRepository,
               let networkReachability,
               await networkReachability.isReachable else {
             return
         }
 
-        _ = try await syncManager.syncPending(now: now)
-        let remote = try await remoteCustomerSatisfactionRepository.fetch(id: satisfaction.id)
-        guard remote.id == satisfaction.id else {
-            throw DomainError.invalidData(reason: "customerSatisfaction.remoteIdMismatch")
-        }
+        await syncLifecycle.handleNetworkBecameReachable(now: now)
+        try await waitForRemoteSatisfaction(
+            satisfaction,
+            remote: remoteCustomerSatisfactionRepository
+        )
         await simulateSurveySMS(for: satisfaction)
+    }
+
+    private func waitForRemoteSatisfaction(
+        _ satisfaction: CustomerSatisfaction,
+        remote: any CustomerSatisfactionRepository
+    ) async throws {
+        for attempt in 0..<30 {
+            if let fetched = try? await remote.fetch(id: satisfaction.id),
+               fetched.id == satisfaction.id {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(400))
+        }
+        throw DomainError.notFound(
+            entity: "CustomerSatisfaction",
+            id: satisfaction.id.rawValue
+        )
     }
 
     private func simulateSurveySMS(for satisfaction: CustomerSatisfaction) async {

@@ -115,12 +115,30 @@ enum SyncRemoteDispatcher {
             try await remote.workOrders.save(order)
         case .update:
             let localOrder = try await local.workOrders.fetch(id: id)
+            let remoteOrder = try await fetchRemoteWorkOrderIfPresent(id: id, remote: remote)
             try await rejectCompletedWorkOrderConflict(
                 local: localOrder,
-                remote: try await fetchRemoteWorkOrderIfPresent(id: id, remote: remote),
+                remote: remoteOrder,
                 operation: operation
             )
-            try await remote.workOrders.save(localOrder)
+            if let remoteOrder,
+               remoteOrder.status == .completed,
+               localOrder.status == .completed {
+                return
+            }
+            do {
+                try await remote.workOrders.save(localOrder)
+            } catch {
+                if try await isIdempotentCompletedWorkOrderUpdate(
+                    local: localOrder,
+                    id: id,
+                    remote: remote,
+                    error: error
+                ) {
+                    return
+                }
+                throw error
+            }
         case .delete:
             if let localOrder = try await fetchLocalWorkOrderIfPresent(id: id, local: local) {
                 try await rejectCompletedWorkOrderConflict(
@@ -245,7 +263,28 @@ enum SyncRemoteDispatcher {
                 entity: "WorkOrderLocation",
                 id: \.id
             )
-            try await remote.locations.save(location)
+            if let remoteOrder = try await fetchRemoteWorkOrderIfPresent(
+                id: workOrderId,
+                remote: remote
+            ), remoteOrder.status == .completed {
+                if (try? await remote.locations.list(for: workOrderId))?
+                    .contains(where: { $0.id == location.id }) == true {
+                    return
+                }
+            }
+            do {
+                try await remote.locations.save(location)
+            } catch {
+                if try await isIdempotentExistingLocationCreate(
+                    location: location,
+                    workOrderId: workOrderId,
+                    remote: remote,
+                    error: error
+                ) {
+                    return
+                }
+                throw error
+            }
         case .update, .delete:
             throw DomainError.invalidData(
                 reason: "sync.unsupportedOperation.workOrderLocation.\(operation.operationType.rawValue)"
@@ -387,6 +426,38 @@ enum SyncRemoteDispatcher {
     /// Offline completion (local `.completed`, remote missing or still
     /// open) must be allowed to push — otherwise completed GPS ordering
     /// cannot land a consistent remote parent status.
+    /// Firestore rules reject technician updates when the remote parent is
+    /// already `.completed`. Treat that as success when local state matches.
+    private static func isIdempotentCompletedWorkOrderUpdate(
+        local: WorkOrder,
+        id: WorkOrderID,
+        remote: SyncEntityRepositories,
+        error: Error
+    ) async throws -> Bool {
+        guard local.status == .completed else { return false }
+        guard SyncErrorMapping.from(error) == .unauthorized else { return false }
+        guard let remoteOrder = try await fetchRemoteWorkOrderIfPresent(id: id, remote: remote),
+              remoteOrder.status == .completed else {
+            return false
+        }
+        return true
+    }
+
+    private static func isIdempotentExistingLocationCreate(
+        location: WorkOrderLocation,
+        workOrderId: WorkOrderID,
+        remote: SyncEntityRepositories,
+        error: Error
+    ) async throws -> Bool {
+        guard SyncErrorMapping.from(error) == .unauthorized else { return false }
+        guard let remoteOrder = try await fetchRemoteWorkOrderIfPresent(id: workOrderId, remote: remote),
+              remoteOrder.status == .completed else {
+            return false
+        }
+        return (try? await remote.locations.list(for: workOrderId))?
+            .contains(where: { $0.id == location.id }) == true
+    }
+
     private static func rejectCompletedWorkOrderConflict(
         local: WorkOrder,
         remote: WorkOrder?,

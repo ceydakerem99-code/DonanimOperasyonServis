@@ -354,7 +354,8 @@ final class LocalToRemoteSyncManagerTests: XCTestCase {
             makeOperation(
                 id: "d-cs",
                 entityType: .customerSatisfaction,
-                entityId: satisfaction.id.rawValue
+                entityId: satisfaction.id.rawValue,
+                actorUserId: techID
             ),
             makeOperation(
                 id: "d-notif", entityType: .notification, entityId: notification.id.rawValue,

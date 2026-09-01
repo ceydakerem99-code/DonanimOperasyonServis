@@ -95,8 +95,10 @@ final class CompletedGPSSyncOrderingTests: XCTestCase {
             at: now
         )
 
-        let local = try await env.local.customerSatisfactions.list(for: order.id)
-        let satisfaction = try XCTUnwrap(local.only)
+        let satisfaction = try await awaitCustomerSatisfaction(
+            local: env.local,
+            orderId: order.id
+        )
         XCTAssertEqual(satisfaction.workOrderId, order.id)
         XCTAssertEqual(satisfaction.customerId, order.customerId)
         XCTAssertEqual(satisfaction.status, .pending)
@@ -136,6 +138,202 @@ final class CompletedGPSSyncOrderingTests: XCTestCase {
         XCTAssertNil(duplicate)
         let allLocal = try await env.local.customerSatisfactions.list(for: order.id)
         XCTAssertEqual(allLocal.count, 1)
+    }
+
+    func testCustomerSatisfactionSyncsAfterPrunedWorkOrderDependency() async throws {
+        let env = try makeEnvironment()
+        let tech = DomainFixtures.technicianUser()
+        let order = try await seedCompletableOrder(
+            local: env.local,
+            tech: tech,
+            remoteWorkOrders: env.remoteWorkOrders
+        )
+        let service = makeService(local: env.local, queue: env.queue)
+        let completedGPS = try await service.recordLocation(
+            actor: tech,
+            orderId: order.id,
+            event: .completed,
+            coordinate: LocationCoordinate(latitude: 41.0, longitude: 29.0, accuracy: 4)
+        )
+        _ = try await service.complete(
+            actor: tech,
+            orderId: order.id,
+            completedLocationId: completedGPS.id,
+            at: now
+        )
+
+        let satisfaction = try await awaitCustomerSatisfaction(
+            local: env.local,
+            orderId: order.id
+        )
+        let csOps = try await env.queue.list(
+            entityType: .customerSatisfaction,
+            entityId: satisfaction.id.rawValue
+        )
+        let csCreate = try XCTUnwrap(csOps.first { $0.operationType == .create })
+        let gpsOps = try await env.queue.list(
+            entityType: .workOrderLocation,
+            entityId: completedGPS.id
+        )
+        let gpsCreate = try XCTUnwrap(gpsOps.first { $0.operationType == .create })
+        let woOps = try await env.queue.list(
+            entityType: .workOrder,
+            entityId: order.id.rawValue
+        )
+        let woUpdate = try XCTUnwrap(woOps.first { $0.operationType == .update })
+
+        try await env.manager.sync(operation: gpsCreate, now: now)
+        try await env.manager.sync(operation: woUpdate, now: now)
+        try await env.queue.deleteCompleted()
+
+        var heldCS = try await env.queue.fetch(id: csCreate.id)
+        XCTAssertEqual(heldCS.status, .pending)
+
+        try await env.manager.sync(operation: heldCS, now: now)
+        heldCS = try await env.queue.fetch(id: csCreate.id)
+        XCTAssertEqual(heldCS.status, .succeeded)
+
+        let remote = try await env.remoteEntities.customerSatisfactions.fetch(id: satisfaction.id)
+        XCTAssertEqual(remote.id, satisfaction.id)
+        XCTAssertEqual(remote.workOrderId, order.id)
+    }
+
+    func testIdempotentWorkOrderUpdateWhenRemoteAlreadyCompleted() async throws {
+        let env = try makeEnvironment()
+        let tech = DomainFixtures.technicianUser()
+        let order = try await seedCompletableOrder(
+            local: env.local,
+            tech: tech,
+            remoteWorkOrders: env.remoteWorkOrders
+        )
+        let service = makeService(local: env.local, queue: env.queue)
+        let completedGPS = try await service.recordLocation(
+            actor: tech,
+            orderId: order.id,
+            event: .completed,
+            coordinate: LocationCoordinate(latitude: 41.0, longitude: 29.0, accuracy: 4)
+        )
+        let gpsOps = try await env.queue.list(
+            entityType: .workOrderLocation,
+            entityId: completedGPS.id
+        )
+        let gpsCreate = try XCTUnwrap(gpsOps.first { $0.operationType == .create })
+        try await env.manager.sync(operation: gpsCreate, now: now)
+
+        var completedOrder = try await env.local.workOrders.fetch(id: order.id)
+        completedOrder.status = .completed
+        completedOrder.completedAt = now
+        completedOrder.updatedAt = now
+        try await env.local.workOrders.save(completedOrder)
+        try await env.remoteWorkOrders.save(completedOrder)
+
+        let woUpdate = try SyncOperation.pending(
+            id: SyncOperationID("op-wo-idempotent"),
+            entityType: .workOrder,
+            entityId: order.id.rawValue,
+            operationType: .update,
+            createdAt: now,
+            localVersion: 3,
+            workOrderStatus: .completed,
+            allowsCompletedWorkOrderUpdate: true,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(woUpdate)
+
+        let writesBefore = await env.probe.recordedWrites()
+        try await env.manager.sync(operation: woUpdate, now: now)
+        let synced = try await env.queue.fetch(id: woUpdate.id)
+        XCTAssertEqual(synced.status, .succeeded)
+
+        let writesAfter = await env.probe.recordedWrites()
+        let beforeCount = writesBefore.filter { $0 == .save(.workOrder, order.id.rawValue) }.count
+        let afterCount = writesAfter.filter { $0 == .save(.workOrder, order.id.rawValue) }.count
+        XCTAssertEqual(afterCount, beforeCount)
+    }
+
+    func testStalePreCompletionWorkOrderUpdatesAreAcknowledgedWithoutGPSWait() async throws {
+        let env = try makeEnvironment()
+        let tech = DomainFixtures.technicianUser()
+        let order = try await seedCompletableOrder(
+            local: env.local,
+            tech: tech,
+            remoteWorkOrders: env.remoteWorkOrders
+        )
+        let service = makeService(local: env.local, queue: env.queue)
+        let staleUpdate = try SyncOperation.pending(
+            id: SyncOperationID("op-stale-inprogress"),
+            entityType: .workOrder,
+            entityId: order.id.rawValue,
+            operationType: .update,
+            createdAt: now,
+            localVersion: 1,
+            workOrderStatus: .inProgress,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(staleUpdate)
+        let completedGPS = try await service.recordLocation(
+            actor: tech,
+            orderId: order.id,
+            event: .completed,
+            coordinate: LocationCoordinate(latitude: 41.0, longitude: 29.0, accuracy: 4)
+        )
+        _ = try await service.complete(
+            actor: tech,
+            orderId: order.id,
+            completedLocationId: completedGPS.id,
+            at: now
+        )
+
+        let staleUpdates = try await env.queue.list(
+            entityType: .workOrder,
+            entityId: order.id.rawValue
+        ).filter {
+            $0.operationType == .update && $0.dependsOnOperationId == nil && $0.status == .pending
+        }
+        XCTAssertFalse(staleUpdates.isEmpty)
+
+        for stale in staleUpdates {
+            try await env.manager.sync(operation: stale, now: now)
+            let synced = try await env.queue.fetch(id: stale.id)
+            XCTAssertEqual(synced.status, .succeeded)
+        }
+
+        let completionUpdate = try await env.queue.list(
+            entityType: .workOrder,
+            entityId: order.id.rawValue
+        ).first { $0.dependsOnOperationId != nil && $0.status == .pending }
+        XCTAssertNotNil(completionUpdate)
+    }
+
+    func testDrainCountsHeldOperationsOncePerDrain() async throws {
+        let env = try makeEnvironment()
+        let tech = DomainFixtures.technicianUser()
+        let order = try await seedCompletableOrder(
+            local: env.local,
+            tech: tech,
+            remoteWorkOrders: env.remoteWorkOrders
+        )
+        let service = makeService(local: env.local, queue: env.queue)
+        let completedGPS = try await service.recordLocation(
+            actor: tech,
+            orderId: order.id,
+            event: .completed,
+            coordinate: LocationCoordinate(latitude: 41.0, longitude: 29.0, accuracy: 4)
+        )
+        _ = try await service.complete(
+            actor: tech,
+            orderId: order.id,
+            completedLocationId: completedGPS.id,
+            at: now
+        )
+
+        let pendingBefore = try await env.queue.fetch(status: .pending)
+        XCTAssertGreaterThan(pendingBefore.count, 0)
+
+        _ = try await env.manager.syncPending(now: now)
+        let report = await env.manager.lastDrainReport()
+        XCTAssertNotNil(report)
+        XCTAssertLessThanOrEqual(report?.held ?? 0, report?.pendingAtStart ?? 0)
     }
 
     func testBeltAndSuspendersHoldsCompletedWOWithoutExplicitDependency() async throws {
@@ -329,6 +527,99 @@ final class CompletedGPSSyncOrderingTests: XCTestCase {
 
         await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: gpsCreate.id))
         await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: woUpdate.id))
+    }
+
+    func testRemoteAlreadyCompletedAcknowledgesStuckCompletionChainAndUnblocksCustomerSatisfaction() async throws {
+        let env = try makeEnvironment()
+        let tech = DomainFixtures.technicianUser()
+        var order = try await seedCompletableOrder(
+            local: env.local,
+            tech: tech,
+            remoteWorkOrders: env.remoteWorkOrders
+        )
+        let location = DomainFixtures.location(
+            id: "loc-mehmet-stuck",
+            workOrderId: order.id,
+            event: .completed,
+            capturedByUserId: tech.id
+        )
+        try await env.local.locations.save(location)
+
+        let gpsCreate = try SyncOperation.pending(
+            id: SyncOperationID("op-gps-mehmet"),
+            entityType: .workOrderLocation,
+            entityId: location.id,
+            operationType: .create,
+            payloadReference: order.id.rawValue,
+            createdAt: now,
+            localVersion: 1,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(gpsCreate)
+
+        order.status = .completed
+        order.completedAt = now
+        order.updatedAt = now
+        try await env.local.workOrders.save(order)
+        try await env.remoteWorkOrders.save(order)
+
+        var woUpdate = try SyncOperation.pending(
+            id: SyncOperationID("op-wo-mehmet"),
+            entityType: .workOrder,
+            entityId: order.id.rawValue,
+            operationType: .update,
+            createdAt: now,
+            localVersion: 2,
+            workOrderStatus: .completed,
+            dependsOnOperationId: gpsCreate.id,
+            allowsCompletedWorkOrderUpdate: true,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(woUpdate)
+        var runningWO = try await env.queue.fetch(id: woUpdate.id)
+        runningWO.errorMessage = SyncError.unauthorized.diagnosticMessage
+        runningWO.retryCount = 1
+        runningWO.updatedAt = now
+        try await env.queue.update(runningWO)
+
+        let satisfaction = DomainFixtures.customerSatisfaction(
+            id: CustomerSatisfactionID("cs-mehmet"),
+            workOrderId: order.id
+        )
+        try await env.local.customerSatisfactions.save(satisfaction)
+        var csCreate = try SyncOperation.pending(
+            id: SyncOperationID("op-cs-mehmet"),
+            entityType: .customerSatisfaction,
+            entityId: satisfaction.id.rawValue,
+            operationType: .create,
+            createdAt: now,
+            localVersion: 1,
+            dependsOnOperationId: woUpdate.id,
+            actorUserId: tech.id.rawValue
+        )
+        _ = try await env.queue.enqueue(csCreate)
+        var runningCS = try await env.queue.fetch(id: csCreate.id)
+        runningCS.status = .inProgress
+        runningCS.updatedAt = now
+        try await env.queue.update(runningCS)
+        runningCS.status = .failed
+        runningCS.errorMessage = SyncError.dependencyBlocked(
+            blockingOperationId: woUpdate.id.rawValue,
+            underlying: SyncError.unauthorized.diagnosticMessage
+        ).diagnosticMessage
+        runningCS.retryCount = 1
+        runningCS.lastAttemptAt = now
+        runningCS.updatedAt = now
+        try await env.queue.update(runningCS)
+
+        let outcome = try await env.manager.syncPending(now: now)
+        XCTAssertEqual(outcome, .completed)
+
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: gpsCreate.id))
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: woUpdate.id))
+        await XCTAssertThrowsErrorAsync(try await env.queue.fetch(id: csCreate.id))
+        let remoteCS = try await env.remoteEntities.customerSatisfactions.fetch(id: satisfaction.id)
+        XCTAssertEqual(remoteCS.workOrderId, order.id)
     }
 
     func testRestartSafeOrderingAfterQueueReload() async throws {
@@ -550,5 +841,23 @@ final class CompletedGPSSyncOrderingTests: XCTestCase {
             )
         )
         return order
+    }
+
+    private func awaitCustomerSatisfaction(
+        local: SwiftDataTestHarness,
+        orderId: WorkOrderID,
+        timeoutMs: Int = 500
+    ) async throws -> CustomerSatisfaction {
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000)
+        while Date() < deadline {
+            let list = try await local.customerSatisfactions.list(for: orderId)
+            if let first = list.first {
+                return first
+            }
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("customer satisfaction not created for \(orderId.rawValue)")
+        throw DomainError.notFound(entity: "CustomerSatisfaction", id: orderId.rawValue)
     }
 }

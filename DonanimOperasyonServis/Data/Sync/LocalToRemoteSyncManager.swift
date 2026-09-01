@@ -68,11 +68,17 @@ actor LocalToRemoteSyncManager: SyncManaging {
         let pending = try await operationsForCurrentSession(try await queue.fetch(status: .pending))
         let succeeded = try await operationsForCurrentSession(try await queue.fetch(status: .succeeded))
         let conflicts = try await operationsForCurrentSession(try await queue.fetch(status: .conflict))
+        let irrelevantFailed = try await SyncQueueOperationalStaleness.irrelevantFailedIDs(
+            failed: failed,
+            queue: queue,
+            local: local
+        )
         return SyncQueueIssueClassifier.snapshot(
             failed: failed,
             pending: pending,
             succeeded: succeeded,
             conflicts: conflicts,
+            irrelevantFailedIDs: Set(irrelevantFailed),
             at: date
         )
     }
@@ -105,6 +111,7 @@ actor LocalToRemoteSyncManager: SyncManaging {
         AppLogger.sync.info("SYNC AUTO-DRAIN START pendingQuery")
 
         try await requeueActorMatchedFailedOperations(now: now)
+        try await acknowledgeIdempotentCompletedWorkOrderChain(now: now)
         try await requeueResolvedDependencyBlockedOperations(now: now)
         try await requeueUnauthorizedChildrenIfRemoteParentReady(now: now)
         try await backfillMissingActorUserIdOnPendingOperations(now: now)
@@ -131,20 +138,16 @@ actor LocalToRemoteSyncManager: SyncManaging {
         var retried = 0
         var held = 0
         var conflicts = 0
-        var index = 0
-        var progressOffset = 0
 
         var pendingBatch = pending
         var passNumber = 0
+        var heldOperationIDs: Set<String> = []
         while !pendingBatch.isEmpty && passNumber < 4 {
             passNumber += 1
-            let progressTotal = max(pendingAtStart, progressOffset + pendingBatch.count)
             let pass = try await drainPass(
                 operations: pendingBatch,
-                pendingAtStart: pendingAtStart,
-                progressTotal: progressTotal,
-                progressOffset: progressOffset,
-                startingIndex: index,
+                passNumber: passNumber,
+                heldOperationIDs: &heldOperationIDs,
                 now: now
             )
             timings.append(contentsOf: pass.timings)
@@ -153,13 +156,8 @@ actor LocalToRemoteSyncManager: SyncManaging {
             retried += pass.retried
             held += pass.held
             conflicts += pass.conflicts
-            index = pass.nextIndex
-            progressOffset += pendingBatch.count
 
-            let madeProgress = pass.succeeded > 0 || pass.failed > 0 || pass.retried > 0 || pass.conflicts > 0
-            if !madeProgress {
-                break
-            }
+            guard pass.succeeded > 0 else { break }
 
             let nextAllPending = sortForDrain(try await queue.fetchPending(now: now))
             pendingBatch = try await operationsForCurrentSession(nextAllPending)
@@ -198,15 +196,12 @@ actor LocalToRemoteSyncManager: SyncManaging {
         var retried: Int
         var held: Int
         var conflicts: Int
-        var nextIndex: Int
     }
 
     private func drainPass(
         operations: [SyncOperation],
-        pendingAtStart: Int,
-        progressTotal: Int,
-        progressOffset: Int,
-        startingIndex: Int,
+        passNumber: Int,
+        heldOperationIDs: inout Set<String>,
         now: Date
     ) async throws -> DrainPassStats {
         var timings: [SyncDrainReport.OperationTiming] = []
@@ -215,14 +210,10 @@ actor LocalToRemoteSyncManager: SyncManaging {
         var retried = 0
         var held = 0
         var conflicts = 0
-        var index = startingIndex
-        let total = max(pendingAtStart, 1)
-        let displayTotal = max(progressTotal, 1)
+        let batchCount = max(operations.count, 1)
 
-        for operation in operations {
-            index += 1
-            let passIndex = index - startingIndex
-            await onProgress?(progressOffset + passIndex, displayTotal)
+        for (passIndex, operation) in operations.enumerated() {
+            await onProgress?(passIndex + 1, batchCount)
             let t0 = Date()
             let before = (try? await queue.fetch(id: operation.id)) ?? operation
             try await sync(operation: operation, now: now)
@@ -231,8 +222,8 @@ actor LocalToRemoteSyncManager: SyncManaging {
             let duration = Date().timeIntervalSince(t0)
             timings.append(
                 SyncDrainReport.OperationTiming(
-                    index: index,
-                    total: total,
+                    index: passIndex + 1,
+                    total: batchCount,
                     entityType: operation.entityType,
                     operationType: operation.operationType,
                     duration: duration,
@@ -240,13 +231,16 @@ actor LocalToRemoteSyncManager: SyncManaging {
                 )
             )
             AppLogger.sync.info(
-                "SYNC AUTO-DRAIN OP \(index)/\(pendingAtStart) entity=\(operation.entityType.rawValue, privacy: .public) type=\(operation.operationType.rawValue, privacy: .public) id=\(operation.id.rawValue, privacy: .public) duration=\(String(format: "%.2f", duration), privacy: .public)s result=\(result.rawValue, privacy: .public) statusBefore=\(before.status.rawValue, privacy: .public) statusAfter=\(after.status.rawValue, privacy: .public)"
+                "SYNC AUTO-DRAIN OP pass=\(passNumber, privacy: .public) \(passIndex + 1)/\(operations.count, privacy: .public) entity=\(operation.entityType.rawValue, privacy: .public) type=\(operation.operationType.rawValue, privacy: .public) id=\(operation.id.rawValue, privacy: .public) duration=\(String(format: "%.2f", duration), privacy: .public)s result=\(result.rawValue, privacy: .public) statusBefore=\(before.status.rawValue, privacy: .public) statusAfter=\(after.status.rawValue, privacy: .public)"
             )
             switch result {
             case .success: succeeded += 1
             case .failed: failed += 1
             case .retry: retried += 1
-            case .held: held += 1
+            case .held:
+                if heldOperationIDs.insert(operation.id.rawValue).inserted {
+                    held += 1
+                }
             case .conflict: conflicts += 1
             case .skipped: break
             }
@@ -258,8 +252,7 @@ actor LocalToRemoteSyncManager: SyncManaging {
             failed: failed,
             retried: retried,
             held: held,
-            conflicts: conflicts,
-            nextIndex: index
+            conflicts: conflicts
         )
     }
 
@@ -290,6 +283,12 @@ actor LocalToRemoteSyncManager: SyncManaging {
 
         let latest = try await queue.fetch(id: operation.id)
 
+        if try await shouldAcknowledgeSupersededWorkOrderUpdate(latest, now: now) {
+            return
+        }
+        if try await shouldAcknowledgeIdempotentCompletedWorkOrderOperation(latest, now: now) {
+            return
+        }
         if try await shouldHoldForActorMismatch(latest) {
             #if DEBUG
             AppLogger.sync.info(
@@ -374,8 +373,14 @@ actor LocalToRemoteSyncManager: SyncManaging {
             failed: failed,
             succeeded: succeeded
         )
-        if !staleIDs.isEmpty {
-            try await queue.deleteFailed(ids: staleIDs)
+        let irrelevantIDs = try await SyncQueueOperationalStaleness.irrelevantFailedIDs(
+            failed: failed,
+            queue: queue,
+            local: local
+        )
+        let pruneIDs = Array(Set(staleIDs + irrelevantIDs))
+        if !pruneIDs.isEmpty {
+            try await queue.deleteFailed(ids: pruneIDs)
         }
         let remoteDuplicateIDs = await remoteSupersededCreateFailedIDs(failed)
         if !remoteDuplicateIDs.isEmpty {
@@ -434,9 +439,11 @@ actor LocalToRemoteSyncManager: SyncManaging {
                 _ = try await remote.workOrders.fetch(id: WorkOrderID(operation.entityId))
                 return true
             case .workOrderNote, .workOrderPhoto, .workOrderLocation,
-                 .workOrderStatusHistory, .signature, .editRequest, .notification,
-                 .customerSatisfaction:
+                 .workOrderStatusHistory, .signature, .editRequest, .notification:
                 return false
+            case .customerSatisfaction:
+                _ = try await remote.customerSatisfactions.fetch(id: CustomerSatisfactionID(operation.entityId))
+                return true
             }
         } catch let error as DomainError {
             if case .notFound = error { return false }
@@ -496,6 +503,39 @@ actor LocalToRemoteSyncManager: SyncManaging {
             authUID: uid,
             local: local
         )
+    }
+
+    /// Acknowledge completion GPS + work-order rows when Firestore already
+    /// reflects `.completed` so dependency chains (e.g. customer satisfaction)
+    /// are not blocked by stale `unauthorized` or `remoteParentCompleted` holds.
+    private func acknowledgeIdempotentCompletedWorkOrderChain(now: Date) async throws {
+        let pending = try await operationsForCurrentSession(
+            try await queue.fetchPending(now: now)
+        )
+        let failed = try await operationsForCurrentSession(
+            try await queue.fetch(status: .failed)
+        )
+        let candidates = (pending + failed).sorted { lhs, rhs in
+            if lhs.entityType == .workOrderLocation, rhs.entityType == .workOrder {
+                return true
+            }
+            if lhs.entityType == .workOrder, rhs.entityType == .workOrderLocation {
+                return false
+            }
+            return lhs.createdAt < rhs.createdAt
+        }
+        for operation in candidates where operation.status != .succeeded {
+            guard try await SyncCompletionGPSOrdering
+                .shouldAcknowledgeWithoutRemoteWriteWhenBothOrdersCompleted(
+                    operation,
+                    queue: queue,
+                    local: local,
+                    remote: remote
+                ) else {
+                continue
+            }
+            try await acknowledgeWithoutRemoteWrite(operation, now: now)
+        }
     }
 
     /// Legacy unauthorized child rows (from before remote-parent hold)
@@ -723,6 +763,52 @@ actor LocalToRemoteSyncManager: SyncManaging {
 
     /// Remote writes must run under the Firebase Auth UID that enqueued
     /// the row. Mismatch is held silently until the correct user signs in.
+    private func shouldAcknowledgeSupersededWorkOrderUpdate(
+        _ operation: SyncOperation,
+        now: Date
+    ) async throws -> Bool {
+        guard operation.status != .succeeded else { return false }
+        guard try await SyncCompletionGPSOrdering.isSupersededPreCompletionWorkOrderUpdate(
+            operation,
+            queue: queue,
+            local: local
+        ) else {
+            return false
+        }
+        try await acknowledgeWithoutRemoteWrite(operation, now: now)
+        return true
+    }
+
+    private func shouldAcknowledgeIdempotentCompletedWorkOrderOperation(
+        _ operation: SyncOperation,
+        now: Date
+    ) async throws -> Bool {
+        guard operation.status != .succeeded else { return false }
+        guard try await SyncCompletionGPSOrdering
+            .shouldAcknowledgeWithoutRemoteWriteWhenBothOrdersCompleted(
+                operation,
+                queue: queue,
+                local: local,
+                remote: remote
+            ) else {
+            return false
+        }
+        try await acknowledgeWithoutRemoteWrite(operation, now: now)
+        return true
+    }
+
+    private func acknowledgeWithoutRemoteWrite(_ operation: SyncOperation, now: Date) async throws {
+        var running = operation
+        if running.status == .pending {
+            running.status = .inProgress
+            running.lastAttemptAt = now
+            running.updatedAt = now
+            try await queue.update(running)
+            running = try await queue.fetch(id: operation.id)
+        }
+        try await markSucceeded(running, now: now)
+    }
+
     private func shouldHoldForActorMismatch(_ operation: SyncOperation) async throws -> Bool {
         guard let authService else { return false }
         guard let currentUID = authService.currentUID else { return true }
@@ -797,6 +883,16 @@ actor LocalToRemoteSyncManager: SyncManaging {
             return false
         }
         if let dependency = try? await queue.fetch(id: dependencyId) {
+            if try await SyncCompletionGPSOrdering
+                .shouldAcknowledgeWithoutRemoteWriteWhenBothOrdersCompleted(
+                    dependency,
+                    queue: queue,
+                    local: local,
+                    remote: remote
+                ) {
+                try await acknowledgeWithoutRemoteWrite(dependency, now: now)
+                return false
+            }
             switch dependency.status {
             case .succeeded:
                 return false
@@ -837,58 +933,12 @@ actor LocalToRemoteSyncManager: SyncManaging {
         _ operation: SyncOperation,
         now: Date
     ) async throws -> Bool {
-        guard operation.entityType == .workOrder,
-              operation.operationType == .update
-        else { return false }
-
-        let orderId = WorkOrderID(operation.entityId)
-        let order: WorkOrder
-        do {
-            order = try await local.workOrders.fetch(id: orderId)
-        } catch {
-            return false
-        }
-        guard order.status == .completed else { return false }
-
-        let locations = try await local.locations.list(for: orderId)
-        let completedLocations = locations.filter { $0.event == .completed }
-        guard !completedLocations.isEmpty else {
-            // CompletionRequirements require completed GPS; hold until
-            // a local sample exists (should have been written first).
-            return true
-        }
-
-        for location in completedLocations {
-            let ops = try await queue.list(
-                entityType: .workOrderLocation,
-                entityId: location.id
-            )
-            let createOps = ops.filter { $0.operationType == .create }
-            if createOps.isEmpty {
-                // Location exists locally but was never enqueued — hold.
-                return true
-            }
-            if createOps.contains(where: { op in
-                switch op.status {
-                case .succeeded:
-                    return false
-                case .pending, .inProgress, .conflict:
-                    return true
-                case .failed:
-                    if isPermanentlyFailed(op, now: now) {
-                        return false
-                    }
-                    return true
-                }
-            }) {
-                return true
-            }
-            if let blockedBy = createOps.first(where: { isPermanentlyFailed($0, now: now) }) {
-                try await markDependencyBlocked(operation, blockedBy: blockedBy, now: now)
-                return true
-            }
-        }
-        return false
+        try await SyncCompletionGPSOrdering.shouldHoldForCompletedGPS(
+            operation: operation,
+            queue: queue,
+            local: local,
+            now: now
+        )
     }
 
     /// An unresolved conflict, or a `useRemote` resolution that

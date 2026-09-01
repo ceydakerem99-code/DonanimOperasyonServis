@@ -95,12 +95,18 @@ struct TechnicianWorkOrderService: Sendable {
                 payloadReference: order.id.rawValue
             )
         }
-        _ = try await customerSatisfactionService.createOnWorkOrderCompletionWithSync(
-            actor: actor,
-            orderId: order.id,
-            at: now,
-            dependsOnOperationId: workOrderUpdateOperation.id
-        )
+        let satisfactionActor = actor
+        let satisfactionOrderId = order.id
+        let satisfactionDependsOn = workOrderUpdateOperation.id
+        let satisfactionService = customerSatisfactionService
+        Task {
+            _ = try? await satisfactionService.createOnWorkOrderCompletionWithSync(
+                actor: satisfactionActor,
+                orderId: satisfactionOrderId,
+                at: now,
+                dependsOnOperationId: satisfactionDependsOn
+            )
+        }
         return order
     }
 

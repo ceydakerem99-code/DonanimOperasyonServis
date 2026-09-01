@@ -94,6 +94,11 @@ struct DebugDeveloperToolsView: View {
                         Text("ACK: \(realtime.telemetry.receivedAckCount) · Event: \(realtime.telemetry.receivedEventCount) · Unknown: \(realtime.telemetry.unknownMessageCount)")
                             .font(AppFont.caption)
                             .foregroundStyle(AppColor.secondaryText)
+                        if let role = realtime.telemetry.lastHelloRole {
+                            Text("Rol: \(role)")
+                                .font(AppFont.caption)
+                                .foregroundStyle(AppColor.secondaryText)
+                        }
                         if let ack = realtime.telemetry.lastAckStatus {
                             Text("Son ACK: \(ack)")
                                 .font(AppFont.caption)
@@ -105,12 +110,14 @@ struct DebugDeveloperToolsView: View {
                                 .foregroundStyle(smoke.succeeded ? AppColor.success : AppColor.danger)
                         }
                         HStack(spacing: AppSpacing.m) {
-                            Button("Smoke Sequence (customer + WO + duplicate)") {
+                            Button(realtime.telemetry.lastHelloRole == UserRole.technician.rawValue
+                                ? "Smoke Sequence (WO probe + duplicate)"
+                                : "Smoke Sequence (customer + WO + duplicate)") {
                                 Task { await realtime.runShadowSmokeSequence() }
                             }
                             .disabled(realtime.connectionState != .connected)
                         }
-                        Button("Tek Shadow Probe") {
+                        Button("Tek Shadow Probe (rol uyumlu)") {
                             Task { await realtime.sendShadowProbe() }
                         }
                         .disabled(realtime.connectionState != .connected)

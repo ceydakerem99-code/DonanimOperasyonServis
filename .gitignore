@@ -69,3 +69,7 @@ RealtimeGateway/RealtimeGateway.Host/secrets/*.json
 # IDE
 .vscode/
 .idea/
+
+.derivedData/
+DerivedData/
+.build/

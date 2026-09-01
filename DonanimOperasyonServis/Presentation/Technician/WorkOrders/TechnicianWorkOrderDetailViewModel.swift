@@ -87,6 +87,8 @@ final class TechnicianWorkOrderDetailViewModel {
     }
     #endif
     private let asyncLoad = AsyncLoadSession()
+    private var activeLoadTask: Task<Void, Never>?
+    private var isCompletingWorkOrder = false
 
     var showsLoadingIndicator: Bool { asyncLoad.showsLoadingIndicator }
     var hasCachedContent: Bool { content != nil }
@@ -232,18 +234,58 @@ final class TechnicianWorkOrderDetailViewModel {
         }
     }
 
+    func prepareForAppearance() {
+        if isCompletingWorkOrder { return }
+        if let content, content.workOrder.status == .completed, case .loaded = phase {
+            Task { await refreshSyncIndicatorIfNeeded() }
+            return
+        }
+        startLoad()
+    }
+
+    func startLoad() {
+        guard !isCompletingWorkOrder else { return }
+        activeLoadTask?.cancel()
+        activeLoadTask = Task { @MainActor in
+            await load()
+            if !Task.isCancelled {
+                activeLoadTask = nil
+            }
+        }
+    }
+
+    func stopLoad() {
+        activeLoadTask?.cancel()
+        activeLoadTask = nil
+    }
+
     func load() async {
+        if isCompletingWorkOrder, content != nil { return }
+
         let context = asyncLoad.start(hadCachedContent: hasCachedContent)
-        if !context.hadCachedContentAtStart { phase = .loading }
+        if !context.hadCachedContentAtStart, content?.workOrder.status != .completed {
+            phase = .loading
+        }
         defer { asyncLoad.finish(generation: context.generation) }
         let generation = context.generation
         do {
             let loaded = try await fetchContent()
-            guard asyncLoad.isCurrent(generation) else { return }
-            content = loaded
-            phase = .loaded
+            if let existing = content,
+               existing.workOrder.status == .completed,
+               loaded.workOrder.status != .completed {
+                phase = .loaded
+                return
+            }
+            if content == nil || asyncLoad.isCurrent(generation) {
+                content = loaded
+                phase = .loaded
+            }
         } catch is CancellationError {
             guard asyncLoad.isCurrent(generation) else { return }
+            if content != nil {
+                phase = .loaded
+                return
+            }
             if let settled = asyncLoad.settleCancelledLoad(
                 context: context,
                 phase: phase,
@@ -322,6 +364,10 @@ final class TechnicianWorkOrderDetailViewModel {
     }
 
     func completeWork() async {
+        isCompletingWorkOrder = true
+        stopLoad()
+        defer { isCompletingWorkOrder = false }
+
         let keepContentVisible = content != nil
         if !keepContentVisible {
             phase = .submitting
@@ -341,15 +387,20 @@ final class TechnicianWorkOrderDetailViewModel {
                 )
                 completedLocationId = location.id
             }
-            _ = try await dependencies.workOrderService.complete(
+            let order = try await dependencies.workOrderService.complete(
                 actor: actor,
                 orderId: workOrderId,
                 completedLocationId: completedLocationId
             )
             completionErrors = []
-            await load()
+            applyLocalCompletion(order)
+            Task { await refreshSyncIndicatorIfNeeded() }
         } catch is CancellationError {
-            phase = content == nil ? .error("İşlem iptal edildi.") : .loaded
+            if content?.workOrder.status == .completed {
+                phase = .loaded
+            } else {
+                phase = content == nil ? .error("İşlem iptal edildi.") : .loaded
+            }
         } catch let error as LocationSamplingError {
             phase = .error(error.technicianMessage)
         } catch let error as DomainError {
@@ -853,26 +904,113 @@ final class TechnicianWorkOrderDetailViewModel {
 
     func setPauseSheetVisible(_ visible: Bool) { showPauseSheet = visible }
 
+    private func applyLocalCompletion(_ order: WorkOrder) {
+        guard let existing = content else { return }
+        content = TechnicianWorkOrderDetailContent(
+            workOrder: order,
+            customer: existing.customer,
+            notes: existing.notes,
+            photos: existing.photos,
+            locations: existing.locations,
+            signatures: existing.signatures,
+            timeline: existing.timeline,
+            editRequests: existing.editRequests,
+            pendingSyncLabel: SyncStatus.pending.technicianDisplayName,
+            hasConflict: existing.hasConflict,
+            missingRequirements: [],
+            blockingCompletionGaps: []
+        )
+        phase = .loaded
+    }
+
+    /// Recomputes sync indicator fields without entering `.loading`.
+    /// Called after completion and when the sync drain finishes.
+    func refreshSyncIndicatorIfNeeded() async {
+        let orderID = workOrderId.rawValue
+        guard content != nil else {
+            #if DEBUG
+            AppLogger.sync.info(
+                "DETAIL SYNC REFRESH SKIP workOrderId=\(orderID, privacy: .public) reason=noContent"
+            )
+            #endif
+            return
+        }
+        guard !isCompletingWorkOrder else {
+            #if DEBUG
+            AppLogger.sync.info(
+                "DETAIL SYNC REFRESH SKIP workOrderId=\(orderID, privacy: .public) reason=completing"
+            )
+            #endif
+            return
+        }
+        #if DEBUG
+        AppLogger.sync.info(
+            "DETAIL SYNC REFRESH START workOrderId=\(orderID, privacy: .public)"
+        )
+        #endif
+        let context = asyncLoad.start(hadCachedContent: true)
+        defer { asyncLoad.finish(generation: context.generation) }
+        let generation = context.generation
+        do {
+            let loaded = try await fetchContent()
+            if asyncLoad.isCurrent(generation) {
+                content = loaded
+                phase = .loaded
+                #if DEBUG
+                AppLogger.sync.info(
+                    "DETAIL SYNC REFRESH APPLIED workOrderId=\(orderID, privacy: .public) pendingSyncLabel=\(loaded.pendingSyncLabel ?? "nil", privacy: .public)"
+                )
+                #endif
+            }
+        } catch is CancellationError {
+            if content != nil {
+                phase = .loaded
+            }
+        } catch {
+            #if DEBUG
+            AppLogger.sync.error(
+                "DETAIL SYNC REFRESH FAILED workOrderId=\(orderID, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+            )
+            #endif
+            if content != nil {
+                phase = .loaded
+            }
+        }
+    }
+
     private func hasPendingChildEvidenceSync(
         notes: [WorkOrderNote],
-        locations: [WorkOrderLocation]
+        locations: [WorkOrderLocation],
+        workOrder: WorkOrder
     ) async throws -> Bool {
         for note in notes {
-            let ops = try await dependencies.syncOperationRepository.list(
+            let ops = (try? await dependencies.syncOperationRepository.list(
                 entityType: .workOrderNote,
                 entityId: note.id
-            )
-            if ops.contains(where: { $0.status == .pending || $0.status == .failed }) {
-                return true
+            )) ?? []
+            for operation in ops {
+                if try await SyncQueueOperationalStaleness.isChildEvidenceOperationDetailBlocking(
+                    operation,
+                    workOrder: workOrder,
+                    queue: dependencies.syncOperationRepository
+                ) {
+                    return true
+                }
             }
         }
         for location in locations {
-            let ops = try await dependencies.syncOperationRepository.list(
+            let ops = (try? await dependencies.syncOperationRepository.list(
                 entityType: .workOrderLocation,
                 entityId: location.id
-            )
-            if ops.contains(where: { $0.status == .pending || $0.status == .failed }) {
-                return true
+            )) ?? []
+            for operation in ops {
+                if try await SyncQueueOperationalStaleness.isChildEvidenceOperationDetailBlocking(
+                    operation,
+                    workOrder: workOrder,
+                    queue: dependencies.syncOperationRepository
+                ) {
+                    return true
+                }
             }
         }
         return false
@@ -887,10 +1025,11 @@ final class TechnicianWorkOrderDetailViewModel {
         async let locationsTask = dependencies.workOrderLocationRepository.list(for: order.id)
         async let signaturesTask = dependencies.signatureRepository.list(for: order.id)
         async let timelineTask = dependencies.statusHistoryRepository.list(for: order.id)
-        async let syncOpsTask = dependencies.syncOperationRepository.list(
+
+        let syncOps = (try? await dependencies.syncOperationRepository.list(
             entityType: .workOrder,
             entityId: order.id.rawValue
-        )
+        )) ?? []
 
         let customer = try await customerTask
         let notes = try await notesTask
@@ -898,16 +1037,66 @@ final class TechnicianWorkOrderDetailViewModel {
         let locations = try await locationsTask
         let signatures = try await signaturesTask
         let timeline = try await timelineTask
-        let syncOps = try await syncOpsTask
 
-        let workOrderPending = syncOps.first { $0.status == .pending || $0.status == .failed }
-        // Fast path: pending:// upload markers — avoids N+1 sync-queue scans.
-        let mediaUploadPending = photos.contains(where: \.isUploadPending)
-            || signatures.contains(where: \.isUploadPending)
+        var workOrderPending: SyncOperation?
+        for operation in syncOps {
+            if try await SyncQueueOperationalStaleness.isWorkOrderOperationDetailBlocking(
+                operation,
+                workOrder: order,
+                queue: dependencies.syncOperationRepository
+            ) {
+                workOrderPending = operation
+                break
+            }
+        }
+
+        var blockingPhotos: [WorkOrderPhoto] = []
+        for photo in photos {
+            if try await SyncQueueOperationalStaleness.isMediaUploadDetailBlocking(
+                hasPendingStoragePath: photo.isUploadPending,
+                entityType: .workOrderPhoto,
+                entityId: photo.id,
+                workOrder: order,
+                queue: dependencies.syncOperationRepository
+            ) {
+                blockingPhotos.append(photo)
+            }
+        }
+        var blockingSignatures: [Signature] = []
+        for signature in signatures {
+            if try await SyncQueueOperationalStaleness.isMediaUploadDetailBlocking(
+                hasPendingStoragePath: signature.isUploadPending,
+                entityType: .signature,
+                entityId: signature.id,
+                workOrder: order,
+                queue: dependencies.syncOperationRepository
+            ) {
+                blockingSignatures.append(signature)
+            }
+        }
+        let mediaUploadPending = !blockingPhotos.isEmpty || !blockingSignatures.isEmpty
         let childEvidenceSyncPending = try await hasPendingChildEvidenceSync(
+            notes: notes,
+            locations: locations,
+            workOrder: order
+        )
+
+        #if DEBUG
+        await logDetailSyncDiagnostics(
+            workOrderId: order.id,
+            workOrderStatus: order.status,
+            syncOps: syncOps,
+            workOrderPending: workOrderPending,
+            photos: photos,
+            signatures: signatures,
+            blockingPhotos: blockingPhotos,
+            blockingSignatures: blockingSignatures,
+            mediaUploadPending: mediaUploadPending,
+            childEvidenceSyncPending: childEvidenceSyncPending,
             notes: notes,
             locations: locations
         )
+        #endif
 
         var hasConflict = syncOps.contains { $0.status == .conflict }
         if !hasConflict {
@@ -937,13 +1126,25 @@ final class TechnicianWorkOrderDetailViewModel {
         let blockingGaps = CompletionRequirements.missingBeforeCompleteAction(context)
 
         let pendingLabel: String?
+        let pendingBranch: String
         if let workOrderPending {
             pendingLabel = workOrderPending.status.technicianDisplayName
+            pendingBranch = "WORKORDER_PENDING"
         } else if mediaUploadPending || childEvidenceSyncPending {
             pendingLabel = SyncStatus.pending.technicianDisplayName
+            pendingBranch = mediaUploadPending && childEvidenceSyncPending
+                ? "MEDIA_PENDING+CHILD_EVIDENCE_PENDING"
+                : (mediaUploadPending ? "MEDIA_PENDING" : "CHILD_EVIDENCE_PENDING")
         } else {
             pendingLabel = nil
+            pendingBranch = "NO_PENDING"
         }
+
+        #if DEBUG
+        AppLogger.sync.info(
+            "DETAIL SYNC LABEL workOrderId=\(order.id.rawValue, privacy: .public) branch=\(pendingBranch, privacy: .public) pendingSyncLabel=\(pendingLabel ?? "nil", privacy: .public)"
+        )
+        #endif
 
         let editRequests = (try? await dependencies.editRequestRepository.list(for: order.id)) ?? []
 
@@ -962,6 +1163,85 @@ final class TechnicianWorkOrderDetailViewModel {
             blockingCompletionGaps: blockingGaps
         )
     }
+
+    #if DEBUG
+    private func logDetailSyncDiagnostics(
+        workOrderId: WorkOrderID,
+        workOrderStatus: WorkOrderStatus,
+        syncOps: [SyncOperation],
+        workOrderPending: SyncOperation?,
+        photos: [WorkOrderPhoto],
+        signatures: [Signature],
+        blockingPhotos: [WorkOrderPhoto],
+        blockingSignatures: [Signature],
+        mediaUploadPending: Bool,
+        childEvidenceSyncPending: Bool,
+        notes: [WorkOrderNote],
+        locations: [WorkOrderLocation]
+    ) async {
+        AppLogger.sync.info(
+            "DETAIL SYNC DIAG workOrderId=\(workOrderId.rawValue, privacy: .public) status=\(workOrderStatus.rawValue, privacy: .public) workOrderPending=\(workOrderPending?.id.rawValue ?? "nil", privacy: .public) mediaUploadPending=\(mediaUploadPending, privacy: .public) childEvidenceSyncPending=\(childEvidenceSyncPending, privacy: .public)"
+        )
+        for operation in syncOps {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG workOrder op id=\(operation.id.rawValue, privacy: .public) type=\(operation.operationType.rawValue, privacy: .public) status=\(operation.status.rawValue, privacy: .public) actor=\(operation.actorUserId ?? "-", privacy: .public) localVersion=\(operation.localVersion, privacy: .public) dependsOn=\(operation.dependsOnOperationId?.rawValue ?? "-", privacy: .public)"
+            )
+        }
+        if let workOrderPending {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG WORKORDER_PENDING op=\(workOrderPending.id.rawValue, privacy: .public) status=\(workOrderPending.status.rawValue, privacy: .public)"
+            )
+        }
+        for photo in blockingPhotos {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG MEDIA_PENDING photoId=\(photo.id, privacy: .public) storagePath=\(photo.storagePath ?? "nil", privacy: .public) pendingPath=\(photo.isUploadPending, privacy: .public)"
+            )
+        }
+        for signature in blockingSignatures {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG MEDIA_PENDING signatureId=\(signature.id, privacy: .public) storagePath=\(signature.storagePath ?? "nil", privacy: .public) pendingPath=\(signature.isUploadPending, privacy: .public)"
+            )
+        }
+        for photo in photos where photo.isUploadPending && !blockingPhotos.contains(where: { $0.id == photo.id }) {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG MEDIA_STALE_IGNORED photoId=\(photo.id, privacy: .public) storagePath=\(photo.storagePath ?? "nil", privacy: .public)"
+            )
+        }
+        for signature in signatures where signature.isUploadPending && !blockingSignatures.contains(where: { $0.id == signature.id }) {
+            AppLogger.sync.info(
+                "DETAIL SYNC DIAG MEDIA_STALE_IGNORED signatureId=\(signature.id, privacy: .public) storagePath=\(signature.storagePath ?? "nil", privacy: .public)"
+            )
+        }
+        for note in notes {
+            let ops = (try? await dependencies.syncOperationRepository.list(
+                entityType: .workOrderNote,
+                entityId: note.id
+            )) ?? []
+            for operation in ops where SyncQueueOperationalStaleness.isDetailBlocking(
+                operation,
+                workOrderStatus: workOrderStatus
+            ) {
+                AppLogger.sync.info(
+                    "DETAIL SYNC DIAG CHILD_EVIDENCE noteId=\(note.id, privacy: .public) op=\(operation.id.rawValue, privacy: .public) status=\(operation.status.rawValue, privacy: .public) actor=\(operation.actorUserId ?? "-", privacy: .public)"
+                )
+            }
+        }
+        for location in locations {
+            let ops = (try? await dependencies.syncOperationRepository.list(
+                entityType: .workOrderLocation,
+                entityId: location.id
+            )) ?? []
+            for operation in ops where SyncQueueOperationalStaleness.isDetailBlocking(
+                operation,
+                workOrderStatus: workOrderStatus
+            ) {
+                AppLogger.sync.info(
+                    "DETAIL SYNC DIAG CHILD_EVIDENCE locationId=\(location.id, privacy: .public) op=\(operation.id.rawValue, privacy: .public) status=\(operation.status.rawValue, privacy: .public) actor=\(operation.actorUserId ?? "-", privacy: .public)"
+                )
+            }
+        }
+    }
+    #endif
 }
 
 #if DEBUG
