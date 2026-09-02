@@ -16,6 +16,7 @@ struct CustomerSatisfactionContentView: View {
     let ratingBars: [CustomerSatisfactionRatingBar]
     let technicianSummaries: [CustomerSatisfactionTechnicianSummary]
     let recentEntries: [CustomerSatisfactionEntry]
+    var onSelectEntry: (CustomerSatisfactionEntry) -> Void
     var onReload: () -> Void
 
     var body: some View {
@@ -49,9 +50,6 @@ struct CustomerSatisfactionContentView: View {
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
-        }
-        .navigationDestination(for: CustomerSatisfactionEntry.self) { entry in
-            CustomerSatisfactionDetailView(entry: entry)
         }
     }
 
@@ -187,10 +185,10 @@ struct CustomerSatisfactionContentView: View {
                     .foregroundStyle(AppColor.secondaryText)
             } else {
                 ForEach(recentEntries) { entry in
-                    NavigationLink(value: entry) {
-                        CustomerSatisfactionEntryCard(entry: entry)
-                    }
-                    .buttonStyle(.plain)
+                    CustomerSatisfactionEntryCard(
+                        entry: entry,
+                        onTap: { onSelectEntry(entry) }
+                    )
                 }
             }
         }

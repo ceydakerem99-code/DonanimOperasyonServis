@@ -59,6 +59,7 @@ enum OperatorDestination: Hashable, Sendable {
     case notificationSettings
     case changePassword
     case customerSatisfactionSurvey(CustomerSatisfactionID)
+    case customerSatisfactionDetail(CustomerSatisfactionEntry)
     case technicians
     #if DEBUG
     case debugDeveloperTools
@@ -85,6 +86,7 @@ extension OperatorDestination {
         case .notificationSettings: return "Bildirim Ayarları"
         case .changePassword: return "Şifre Değiştir"
         case .customerSatisfactionSurvey: return "Hizmet Değerlendirme"
+        case .customerSatisfactionDetail: return "Müşteri Memnuniyeti"
         case .technicians: return "Teknisyenler"
         #if DEBUG
         case .debugDeveloperTools: return "Geliştirici / Test"

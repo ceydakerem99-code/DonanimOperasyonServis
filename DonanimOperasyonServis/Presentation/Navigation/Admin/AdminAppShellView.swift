@@ -186,7 +186,8 @@ struct AdminAppShellView: View {
                 )
             } else if kind == .customerSatisfaction {
                 CustomerSatisfactionView(
-                    viewModel: customerSatisfactionCache.viewModel()
+                    viewModel: customerSatisfactionCache.viewModel(),
+                    onSelectEntry: { router.push(.customerSatisfactionDetail($0)) }
                 )
             } else if kind == .faultRecurrence {
                 FaultRecurrenceAnalysisView(
@@ -213,6 +214,9 @@ struct AdminAppShellView: View {
                 dependencies: dependencies,
                 onDeleted: { router.pop() }
             )
+
+        case .customerSatisfactionDetail(let entry):
+            CustomerSatisfactionDetailView(entry: entry)
 
         case .conflicts:
             AdminConflictListView(

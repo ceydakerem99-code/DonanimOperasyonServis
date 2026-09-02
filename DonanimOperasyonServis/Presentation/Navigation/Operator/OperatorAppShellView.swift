@@ -268,7 +268,8 @@ struct OperatorAppShellView: View {
                 )
             } else if kind == .customerSatisfaction {
                 OperatorCustomerSatisfactionView(
-                    viewModel: customerSatisfactionCache.viewModel()
+                    viewModel: customerSatisfactionCache.viewModel(),
+                    onSelectEntry: { router.push(.customerSatisfactionDetail($0)) }
                 )
             } else if kind == .faultRecurrence {
                 OperatorFaultRecurrenceAnalysisView(
@@ -336,6 +337,9 @@ struct OperatorAppShellView: View {
 
         case .customerSatisfactionSurvey(let id):
             CustomerSatisfactionFormView(satisfactionId: id)
+
+        case .customerSatisfactionDetail(let entry):
+            CustomerSatisfactionDetailView(entry: entry)
 
         #if DEBUG
         case .debugDeveloperTools:

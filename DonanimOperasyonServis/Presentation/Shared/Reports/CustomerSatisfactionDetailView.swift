@@ -2,8 +2,16 @@ import SwiftUI
 
 struct CustomerSatisfactionEntryCard: View {
     let entry: CustomerSatisfactionEntry
+    var onTap: () -> Void
 
     var body: some View {
+        Button(action: onTap) {
+            cardContent
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var cardContent: some View {
         HStack(alignment: .center, spacing: AppSpacing.s) {
             VStack(alignment: .leading, spacing: AppSpacing.s) {
                 headerRow
@@ -321,11 +329,11 @@ struct CustomerSatisfactionStarRatingDisplay: View {
 
     return NavigationStack {
         ScrollView {
-            CustomerSatisfactionEntryCard(entry: entry)
-                .padding()
-        }
-        .navigationDestination(for: CustomerSatisfactionEntry.self) { selected in
-            CustomerSatisfactionDetailView(entry: selected)
+            CustomerSatisfactionEntryCard(
+                entry: entry,
+                onTap: {}
+            )
+            .padding()
         }
     }
 }

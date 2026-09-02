@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CustomerSatisfactionView: View {
     @Bindable var viewModel: CustomerSatisfactionViewModel
+    var onSelectEntry: (CustomerSatisfactionEntry) -> Void
 
     var body: some View {
         CustomerSatisfactionContentView(
@@ -12,6 +13,7 @@ struct CustomerSatisfactionView: View {
             ratingBars: viewModel.ratingBars,
             technicianSummaries: viewModel.technicianSummaries,
             recentEntries: viewModel.recentEntries,
+            onSelectEntry: onSelectEntry,
             onReload: { Task { await viewModel.load() } }
         )
         .navigationTitle("Müşteri Memnuniyeti")
@@ -32,6 +34,7 @@ struct CustomerSatisfactionView: View {
 
 struct OperatorCustomerSatisfactionView: View {
     @Bindable var viewModel: OperatorCustomerSatisfactionViewModel
+    var onSelectEntry: (CustomerSatisfactionEntry) -> Void
 
     var body: some View {
         CustomerSatisfactionContentView(
@@ -42,6 +45,7 @@ struct OperatorCustomerSatisfactionView: View {
             ratingBars: viewModel.ratingBars,
             technicianSummaries: viewModel.technicianSummaries,
             recentEntries: viewModel.recentEntries,
+            onSelectEntry: onSelectEntry,
             onReload: { Task { await viewModel.load() } }
         )
         .navigationTitle("Müşteri Memnuniyeti")
@@ -64,7 +68,8 @@ struct OperatorCustomerSatisfactionView: View {
 #Preview("Customer Satisfaction") {
     NavigationStack {
         CustomerSatisfactionView(
-            viewModel: .previewReady()
+            viewModel: .previewReady(),
+            onSelectEntry: { _ in }
         )
     }
 }

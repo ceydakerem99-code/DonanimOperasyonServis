@@ -50,6 +50,7 @@ enum AdminDestination: Hashable, Sendable {
     case pauseReasons
     case reportDetail(AdminReportKind)
     case workOrderReport(WorkOrderID)
+    case customerSatisfactionDetail(CustomerSatisfactionEntry)
     case conflicts
 }
 
@@ -63,6 +64,7 @@ extension AdminDestination {
         case .pauseReasons: return "Bekleme Nedenleri"
         case .reportDetail(let kind): return kind.title
         case .workOrderReport: return "İş Emri Raporu"
+        case .customerSatisfactionDetail: return "Müşteri Memnuniyeti"
         case .conflicts: return "Senkron Çakışmaları"
         }
     }
