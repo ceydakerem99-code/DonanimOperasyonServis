@@ -380,7 +380,8 @@ final class Faz13AChildSyncPayloadReferenceTests: XCTestCase {
                 customerRepository: local.customers
             ),
             syncOperationRepository: queue,
-            storageDataSource: FakeFirebaseStorageDataSource()
+            storageDataSource: FakeFirebaseStorageDataSource(),
+            networkReachability: FakeNetworkReachability(isReachable: true)
         )
     }
 }

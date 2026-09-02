@@ -570,7 +570,8 @@ final class Faz13BDeferredStorageUploadTests: XCTestCase {
     private func makeTechnicianService(
         local: SwiftDataTestHarness,
         queue: SyncOperationRepository,
-        storage: FakeFirebaseStorageDataSource
+        storage: FakeFirebaseStorageDataSource,
+        networkReachability: any NetworkReachabilityProviding = FakeNetworkReachability(isReachable: true)
     ) -> TechnicianWorkOrderService {
         TechnicianWorkOrderService(
             updateStatus: UpdateWorkOrderStatusUseCase(
@@ -612,7 +613,8 @@ final class Faz13BDeferredStorageUploadTests: XCTestCase {
                 customerRepository: local.customers
             ),
             syncOperationRepository: queue,
-            storageDataSource: storage
+            storageDataSource: storage,
+            networkReachability: networkReachability
         )
     }
 }

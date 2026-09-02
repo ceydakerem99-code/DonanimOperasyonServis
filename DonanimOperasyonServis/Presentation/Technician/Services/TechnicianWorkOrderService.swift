@@ -12,6 +12,7 @@ struct TechnicianWorkOrderService: Sendable {
     let customerSatisfactionService: TechnicianCustomerSatisfactionService
     let syncOperationRepository: SyncOperationRepository
     let storageDataSource: FirebaseStorageDataSource
+    let networkReachability: any NetworkReachabilityProviding
 
     @discardableResult
     func transitionStatus(
@@ -257,6 +258,9 @@ struct TechnicianWorkOrderService: Sendable {
     }
 
     private func uploadIfPossible(data: Data, to path: FirebaseStoragePath) async -> Bool {
+        guard await networkReachability.isReachable else {
+            return false
+        }
         do {
             _ = try await storageDataSource.upload(data: data, to: path)
             return true

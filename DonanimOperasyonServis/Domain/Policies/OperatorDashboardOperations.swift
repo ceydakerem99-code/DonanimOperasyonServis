@@ -71,7 +71,21 @@ enum OperatorDashboardOperations {
             }
         }
 
-        return (available, busy)
+        let pausedAvailable = available.filter { technician in
+            orders.contains {
+                $0.assignedTechnicianId == technician.id &&
+                $0.status == .paused
+            }
+        }
+
+        let actuallyAvailable = available.filter { technician in
+            !orders.contains {
+                $0.assignedTechnicianId == technician.id &&
+                $0.status == .paused
+            }
+        }
+
+        return (pausedAvailable + actuallyAvailable, busy)
     }
 
     /// Overdue when the planned window has passed and the job is not terminal.

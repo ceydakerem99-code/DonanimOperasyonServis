@@ -69,7 +69,8 @@ extension DIContainer {
                     networkReachability: networkReachability
                 ),
                 syncOperationRepository: syncOperationRepository,
-                storageDataSource: firebaseStorageDataSource
+                storageDataSource: firebaseStorageDataSource,
+                networkReachability: networkReachability
             ),
             customerRepository: customerRepository,
             localDirectoryCacheRefresh: localDirectoryCacheRefresh,

@@ -776,7 +776,8 @@ final class CompletedGPSSyncOrderingTests: XCTestCase {
                 customerRepository: local.customers
             ),
             syncOperationRepository: queue,
-            storageDataSource: FakeFirebaseStorageDataSource()
+            storageDataSource: FakeFirebaseStorageDataSource(),
+            networkReachability: FakeNetworkReachability(isReachable: true)
         )
     }
 

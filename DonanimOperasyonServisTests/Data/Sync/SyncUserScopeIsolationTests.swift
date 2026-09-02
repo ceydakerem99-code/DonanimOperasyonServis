@@ -197,8 +197,13 @@ final class SyncUserScopeIsolationTests: XCTestCase {
 
         env.auth.setUID(Self.ceydaOperatorID.rawValue)
         _ = try await env.manager.syncPending(now: now.addingTimeInterval(2))
-        let operatorAfter = try await env.queue.fetch(id: operatorUpdate.id)
-        XCTAssertNotEqual(operatorAfter.status, .succeeded)
+        await XCTAssertThrowsErrorAsync(
+            try await env.queue.fetch(id: operatorUpdate.id)
+        )
+        let writes = await env.probe.recordedWrites()
+        XCTAssertTrue(
+            writes.contains(.save(.workOrder, order.id.rawValue))
+        )
     }
 
     // MARK: - Drain loop
