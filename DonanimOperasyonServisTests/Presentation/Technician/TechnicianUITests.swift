@@ -220,6 +220,8 @@ final class TechnicianHomeViewModelTests: XCTestCase {
             remoteWorkOrders: slowRemote,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability
@@ -261,6 +263,8 @@ final class TechnicianHomeViewModelTests: XCTestCase {
             remoteWorkOrders: slowRemote,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability
@@ -314,6 +318,8 @@ final class TechnicianWorkOrderListPerformanceTests: XCTestCase {
             remoteWorkOrders: slowRemote,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability
@@ -358,6 +364,8 @@ final class TechnicianWorkOrderListPerformanceTests: XCTestCase {
             remoteWorkOrders: countingRemote,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability

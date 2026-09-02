@@ -45,6 +45,7 @@ final class OperatorCustomerSatisfactionViewModel {
             let workOrdersById = Dictionary(uniqueKeysWithValues: orders.map { ($0.id, $0) })
             let visibleWorkOrderIds = Set(orders.map(\.id))
 
+            await dependencies.localDirectoryCacheRefresh.refreshCustomerSatisfactions()
             let allSatisfactions = try await loadAllSatisfactions()
             guard asyncLoad.isCurrent(generation) else { return }
             let satisfactions = allSatisfactions.filter { visibleWorkOrderIds.contains($0.workOrderId) }

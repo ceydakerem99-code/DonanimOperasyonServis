@@ -15,6 +15,8 @@ struct LocalDirectoryCacheRefresh: Sendable {
     let remoteWorkOrders: WorkOrderRepository
     let localNotifications: NotificationRepository
     let remoteNotifications: NotificationRepository
+    let localCustomerSatisfactions: any CustomerSatisfactionRepository
+    let remoteCustomerSatisfactions: any CustomerSatisfactionRepository
     let syncOperationRepository: SyncOperationRepository
     let reconciliationEngine: any Reconciling
     let networkReachability: NetworkReachabilityProviding
@@ -94,6 +96,28 @@ struct LocalDirectoryCacheRefresh: Sendable {
         guard await networkReachability.isReachable else { return }
         await Self.technicianRefreshGate.run(technicianId: technicianId) {
             await self.performTechnicianAssignmentsRefresh(technicianId: technicianId)
+        }
+    }
+
+    /// Pulls customer satisfaction rows from Firestore into local SwiftData.
+    ///
+    /// Web survey submissions update Firestore directly (Cloudflare Worker) and
+    /// bypass the iOS sync queue, so report screens must refresh this collection
+    /// before reading local cache.
+    func refreshCustomerSatisfactions() async {
+        guard await networkReachability.isReachable else { return }
+        do {
+            for status in CustomerSatisfactionStatus.allCases {
+                let remoteList = try await remoteCustomerSatisfactions.listByStatus(status)
+                for satisfaction in remoteList {
+                    if await hasPendingCustomerSatisfactionMutation(entityId: satisfaction.id.rawValue) {
+                        continue
+                    }
+                    try await localCustomerSatisfactions.save(satisfaction)
+                }
+            }
+        } catch {
+            AppLogger.app.warning("Customer satisfaction directory refresh failed: \(error)")
         }
     }
 
@@ -287,6 +311,16 @@ struct LocalDirectoryCacheRefresh: Sendable {
     private func hasPendingNotificationMutation(entityId: String) async -> Bool {
         guard let operations = try? await syncOperationRepository.list(
             entityType: .notification,
+            entityId: entityId
+        ) else {
+            return false
+        }
+        return operations.contains { $0.status != .succeeded }
+    }
+
+    private func hasPendingCustomerSatisfactionMutation(entityId: String) async -> Bool {
+        guard let operations = try? await syncOperationRepository.list(
+            entityType: .customerSatisfaction,
             entityId: entityId
         ) else {
             return false

@@ -40,6 +40,7 @@ final class CustomerSatisfactionViewModel {
                 throw DomainError.unauthorized(action: .viewSystemReports)
             }
 
+            await dependencies.localDirectoryCacheRefresh.refreshCustomerSatisfactions()
             let satisfactions = try await loadAllSatisfactions()
             guard asyncLoad.isCurrent(generation) else { return }
 

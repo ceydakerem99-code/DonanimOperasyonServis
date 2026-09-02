@@ -275,4 +275,60 @@ final class ReportsV2Tests: XCTestCase {
         XCTAssertTrue(signatures === cache.viewModel(for: .signatures))
         XCTAssertTrue(photos === cache.viewModel(for: .photos))
     }
+
+    func testStructuredCommentParserExtractsDimensionRatingsAndFreeformComment() {
+        let parsed = CustomerSatisfactionStructuredComment.parse(from: """
+        Servis Kalitesi: 4/5
+        Personel İlgisi: 4/5
+        Çözüm Hızı: 5/5
+        Deneyim: Hızlı çözüldü, Personel ilgiliydi
+        Yorum: Servisten çok memnun kaldım. Teknisyen ilgiliydi.
+        """)
+
+        XCTAssertEqual(parsed.serviceQualityRating, 4)
+        XCTAssertEqual(parsed.staffCareRating, 4)
+        XCTAssertEqual(parsed.resolutionSpeedRating, 5)
+        XCTAssertEqual(parsed.experienceTags, ["Hızlı çözüldü", "Personel ilgiliydi"])
+        XCTAssertEqual(parsed.freeformComment, "Servisten çok memnun kaldım. Teknisyen ilgiliydi.")
+    }
+
+    func testStructuredCommentParserTreatsUnstructuredTextAsFreeformComment() {
+        let parsed = CustomerSatisfactionStructuredComment.parse(from: "Eski düz yorum metni")
+        XCTAssertEqual(parsed.freeformComment, "Eski düz yorum metni")
+        XCTAssertNil(parsed.serviceQualityRating)
+    }
+
+    func testCustomerSatisfactionEntryExposesFreeformCommentPreviewOnlyForSubmitted() {
+        let submitted = CustomerSatisfactionEntry(
+            id: CustomerSatisfactionID("cs-1"),
+            satisfaction: DomainFixtures.customerSatisfaction(
+                status: .submitted,
+                rating: .five,
+                comment: "Servis Kalitesi: 5/5\nPersonel İlgisi: 5/5\nÇözüm Hızı: 5/5\nYorum: Harika servis"
+            ),
+            workOrderId: WorkOrderID("wo-1"),
+            workOrderNumber: "WO-1",
+            customerName: "Müşteri",
+            technicianName: "Teknisyen",
+            workTypeLabel: "Arıza",
+            scheduledDate: nil,
+            sortDate: .now
+        )
+
+        XCTAssertEqual(submitted.freeformCommentText, "Harika servis")
+        XCTAssertEqual(submitted.structuredComment.serviceQualityRating, 5)
+
+        let pending = CustomerSatisfactionEntry(
+            id: CustomerSatisfactionID("cs-2"),
+            satisfaction: DomainFixtures.customerSatisfaction(status: .pending),
+            workOrderId: WorkOrderID("wo-2"),
+            workOrderNumber: "WO-2",
+            customerName: "Müşteri",
+            technicianName: "Teknisyen",
+            workTypeLabel: "Arıza",
+            scheduledDate: nil,
+            sortDate: .now
+        )
+        XCTAssertNil(pending.freeformCommentText)
+    }
 }

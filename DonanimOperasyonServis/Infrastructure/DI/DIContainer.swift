@@ -266,6 +266,8 @@ final class DIContainer: Sendable {
             remoteWorkOrders: remoteEntities.workOrders,
             localNotifications: self.notificationRepository,
             remoteNotifications: remoteEntities.notifications,
+            localCustomerSatisfactions: self.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: remoteEntities.customerSatisfactions,
             syncOperationRepository: self.syncOperationRepository,
             reconciliationEngine: self.reconciliationEngine,
             networkReachability: networkReachability

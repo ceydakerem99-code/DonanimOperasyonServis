@@ -54,6 +54,52 @@ final class LocalDirectoryCacheRefreshTests: XCTestCase {
         XCTAssertTrue(local.contains { $0.id == notification.id })
     }
 
+    func testCustomerSatisfactionRefreshPullsSubmittedRemoteRows() async throws {
+        await reachability.setReachable(true)
+        let satisfaction = DomainFixtures.customerSatisfaction(
+            id: CustomerSatisfactionID("cs-refresh-submitted"),
+            status: .submitted,
+            rating: .five,
+            comment: "Harika hizmet"
+        )
+        try await container.remoteCustomerSatisfactionRepository.save(satisfaction)
+
+        let localBefore = try await container.customerSatisfactionRepository.listByStatus(.submitted)
+        XCTAssertFalse(localBefore.contains { $0.id == satisfaction.id })
+
+        let refresh = makeRefresh()
+        await refresh.refreshCustomerSatisfactions()
+
+        let localAfter = try await container.customerSatisfactionRepository.listByStatus(.submitted)
+        let refreshed = try XCTUnwrap(localAfter.first { $0.id == satisfaction.id })
+        XCTAssertEqual(refreshed.status, .submitted)
+        XCTAssertEqual(refreshed.rating, .five)
+        XCTAssertEqual(refreshed.comment, "Harika hizmet")
+    }
+
+    func testCustomerSatisfactionRefreshUpdatesPendingLocalToSubmittedRemote() async throws {
+        await reachability.setReachable(true)
+        let satisfactionId = CustomerSatisfactionID("cs-refresh-pending-local")
+        let pendingLocal = DomainFixtures.customerSatisfaction(id: satisfactionId, status: .pending)
+        try await container.customerSatisfactionRepository.save(pendingLocal)
+
+        var submittedRemote = pendingLocal
+        submittedRemote.status = .submitted
+        submittedRemote.rating = .four
+        submittedRemote.comment = "Web yanıtı"
+        submittedRemote.submittedAt = Date()
+        try await container.remoteCustomerSatisfactionRepository.save(submittedRemote)
+
+        let refresh = makeRefresh()
+        await refresh.refreshCustomerSatisfactions()
+
+        let local = try await container.customerSatisfactionRepository.fetch(id: satisfactionId)
+        XCTAssertEqual(local.status, .submitted)
+        XCTAssertEqual(local.rating, .four)
+        XCTAssertEqual(local.comment, "Web yanıtı")
+        XCTAssertNotNil(local.submittedAt)
+    }
+
     func testTechnicianAssignmentRefreshPullsAssignedWorkOrdersAndCustomersWhenOnline() async throws {
         await reachability.setReachable(true)
         let tech = DomainFixtures.mehmetTechnician()
@@ -665,6 +711,8 @@ final class LocalDirectoryCacheRefreshTests: XCTestCase {
             remoteWorkOrders: remoteWorkOrders ?? container.remoteWorkOrderRepository,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: reconciliationEngine ?? container.reconciliationEngine,
             networkReachability: reachability
@@ -793,6 +841,8 @@ final class OfflineFirstTechnicianPresentationTests: XCTestCase {
             remoteWorkOrders: container.remoteWorkOrderRepository,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability
@@ -858,6 +908,8 @@ final class OfflineFirstCustomerPresentationTests: XCTestCase {
             remoteWorkOrders: container.remoteWorkOrderRepository,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability
@@ -921,6 +973,8 @@ final class OfflineFirstCustomerPresentationTests: XCTestCase {
             remoteWorkOrders: container.remoteWorkOrderRepository,
             localNotifications: container.notificationRepository,
             remoteNotifications: container.remoteNotificationRepository,
+            localCustomerSatisfactions: container.customerSatisfactionRepository,
+            remoteCustomerSatisfactions: container.remoteCustomerSatisfactionRepository,
             syncOperationRepository: container.syncOperationRepository,
             reconciliationEngine: container.reconciliationEngine,
             networkReachability: reachability

@@ -268,8 +268,7 @@ struct OperatorAppShellView: View {
                 )
             } else if kind == .customerSatisfaction {
                 OperatorCustomerSatisfactionView(
-                    viewModel: customerSatisfactionCache.viewModel(),
-                    onSelectWorkOrder: { router.push(.workOrderDetail($0)) }
+                    viewModel: customerSatisfactionCache.viewModel()
                 )
             } else if kind == .faultRecurrence {
                 OperatorFaultRecurrenceAnalysisView(

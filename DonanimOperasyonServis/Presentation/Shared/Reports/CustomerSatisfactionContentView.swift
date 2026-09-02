@@ -16,7 +16,6 @@ struct CustomerSatisfactionContentView: View {
     let ratingBars: [CustomerSatisfactionRatingBar]
     let technicianSummaries: [CustomerSatisfactionTechnicianSummary]
     let recentEntries: [CustomerSatisfactionEntry]
-    var onSelectWorkOrder: ((WorkOrderID) -> Void)?
     var onReload: () -> Void
 
     var body: some View {
@@ -50,6 +49,9 @@ struct CustomerSatisfactionContentView: View {
             }
             .padding(.horizontal, AppSpacing.l)
             .padding(.bottom, AppSpacing.xl)
+        }
+        .navigationDestination(for: CustomerSatisfactionEntry.self) { entry in
+            CustomerSatisfactionDetailView(entry: entry)
         }
     }
 
@@ -185,92 +187,12 @@ struct CustomerSatisfactionContentView: View {
                     .foregroundStyle(AppColor.secondaryText)
             } else {
                 ForEach(recentEntries) { entry in
-                    evaluationCard(entry)
+                    NavigationLink(value: entry) {
+                        CustomerSatisfactionEntryCard(entry: entry)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-    }
-
-    private func evaluationCard(_ entry: CustomerSatisfactionEntry) -> some View {
-        let content = VStack(alignment: .leading, spacing: AppSpacing.s) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text(entry.workOrderNumber)
-                        .font(AppFont.subtitle)
-                    Text(entry.customerName)
-                        .font(AppFont.body)
-                        .foregroundStyle(AppColor.secondaryText)
-                }
-                Spacer()
-                satisfactionStatusBadge(entry.satisfaction.status)
-            }
-
-            InfoRow(title: "İş Türü", value: entry.workTypeLabel)
-            InfoRow(title: "Teknisyen", value: entry.technicianName)
-            if let scheduledDate = entry.scheduledDate {
-                InfoRow(title: "Planlanan Tarih", value: scheduledDate.formatted(date: .abbreviated, time: .omitted))
-            }
-
-            if let ratingLabel = entry.ratingLabel {
-                InfoRow(title: "Puan", value: ratingLabel)
-            }
-
-            if let comment = entry.commentText, !comment.isEmpty {
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text("Yorum")
-                        .font(AppFont.caption)
-                        .foregroundStyle(AppColor.secondaryText)
-                    Text(comment)
-                        .font(AppFont.body)
-                }
-            } else if entry.satisfaction.status == .pending {
-                Text("Müşteri yanıtı bekleniyor.")
-                    .font(AppFont.caption)
-                    .foregroundStyle(AppColor.secondaryText)
-            }
-
-            if onSelectWorkOrder != nil {
-                HStack {
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(AppFont.caption)
-                        .foregroundStyle(AppColor.secondaryText)
-                }
-            }
-        }
-        .padding(AppSpacing.m)
-        .semanticAccentCard(role: accentRole(for: entry.satisfaction.status))
-
-        if let onSelectWorkOrder {
-            return AnyView(
-                Button {
-                    onSelectWorkOrder(entry.workOrderId)
-                } label: {
-                    content
-                }
-                .buttonStyle(.plain)
-            )
-        }
-        return AnyView(content)
-    }
-
-    private func accentRole(for status: CustomerSatisfactionStatus) -> AppSemanticRole {
-        switch status {
-        case .pending: return .paused
-        case .submitted: return .completed
-        case .expired: return .neutral
-        }
-    }
-
-    private func satisfactionStatusBadge(_ status: CustomerSatisfactionStatus) -> some View {
-        Text(status.displayName)
-            .font(AppFont.label)
-            .padding(.horizontal, AppSpacing.s)
-            .padding(.vertical, AppSpacing.xs)
-            .foregroundStyle(accentRole(for: status).accentColor)
-            .background(
-                RoundedRectangle(cornerRadius: AppRadius.chip, style: .continuous)
-                    .fill(accentRole(for: status).accentColor.opacity(0.12))
-            )
     }
 }

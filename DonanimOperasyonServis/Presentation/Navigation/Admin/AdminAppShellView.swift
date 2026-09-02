@@ -186,8 +186,7 @@ struct AdminAppShellView: View {
                 )
             } else if kind == .customerSatisfaction {
                 CustomerSatisfactionView(
-                    viewModel: customerSatisfactionCache.viewModel(),
-                    onSelectWorkOrder: { router.push(.workOrderReport($0)) }
+                    viewModel: customerSatisfactionCache.viewModel()
                 )
             } else if kind == .faultRecurrence {
                 FaultRecurrenceAnalysisView(
