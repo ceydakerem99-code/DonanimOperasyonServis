@@ -133,6 +133,37 @@ final class RemoteToLocalReconciliationEngineTests: XCTestCase {
         XCTAssertEqual(stored.status, .completed)
     }
 
+    func testPendingWorkOrderAcceptedLocalAssignedRemoteWithUnknownVersionsKeepsLocalWithoutConflict() async throws {
+        let env = try makeEnvironment()
+        var local = DomainFixtures.workOrder(status: .accepted)
+        let remote = DomainFixtures.workOrder(status: .assigned)
+        try await env.local.workOrders.save(local)
+        try await env.remoteWorkOrders.save(remote)
+        let operation = try pendingWorkOrderUpdate(
+            entityId: local.id.rawValue,
+            localVersion: 1,
+            remoteVersion: 0
+        )
+        try await env.queue.enqueue(operation)
+
+        let outcome = try await env.engine.reconcile(
+            request(
+                entityType: .workOrder,
+                entityId: local.id.rawValue,
+                versions: .unknown
+            ),
+            now: now
+        )
+        XCTAssertEqual(outcome.result, .keepLocal)
+        XCTAssertNil(outcome.persistedConflict)
+        local = try await env.local.workOrders.fetch(id: local.id)
+        XCTAssertEqual(local.status, .accepted)
+        let queued = try await env.queue.fetch(id: operation.id)
+        XCTAssertEqual(queued.status, .pending)
+        let storedConflict = try await env.local.syncConflicts.fetch(syncOperationId: operation.id)
+        XCTAssertNil(storedConflict)
+    }
+
     func testRemoteMissingWithPendingMutationDoesNotDeleteLocal() async throws {
         let env = try makeEnvironment()
         let customer = DomainFixtures.customer(name: "Kalsın")
@@ -296,6 +327,24 @@ final class RemoteToLocalReconciliationEngineTests: XCTestCase {
             createdAt: now,
             localVersion: localVersion,
             remoteVersion: remoteVersion
+        )
+    }
+
+    private func pendingWorkOrderUpdate(
+        entityId: String,
+        localVersion: Int,
+        remoteVersion: Int
+    ) throws -> SyncOperation {
+        try SyncOperation.pending(
+            entityType: .workOrder,
+            entityId: entityId,
+            operationType: .update,
+            createdAt: now,
+            localVersion: localVersion,
+            remoteVersion: remoteVersion,
+            workOrderStatus: .accepted,
+            allowsCompletedWorkOrderUpdate: false,
+            actorUserId: DomainFixtures.technicianUser().id.rawValue
         )
     }
 }

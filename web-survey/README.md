@@ -45,5 +45,6 @@ Seed fixture: `cs-e2e-local` / `WO-E2E-001` / `E2E Müşteri`
 ## Spark plan notu
 
 - Hosting (statik web): Spark'ta deploy edilebilir.
-- Cloud Functions (`surveyApi`): Production deploy için Blaze gerekir.
+- Production survey API: **Cloudflare Worker** (`cloudflare-survey-worker/`).
+- Cloud Functions (`surveyApi`): Blaze gerektirir; Spark projelerinde kullanılmaz.
 - Local demo: `web-survey/dev-server.mjs` + Firestore emulator.

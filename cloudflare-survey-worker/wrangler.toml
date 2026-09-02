@@ -1,0 +1,12 @@
+name = "donanimoperasyonservis-survey"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "donanimoperasyonservis"
+
+# Secrets (set via `wrangler secret put`, never commit):
+# - SURVEY_TOKEN_SECRET
+# - FIREBASE_CLIENT_EMAIL
+# - FIREBASE_PRIVATE_KEY

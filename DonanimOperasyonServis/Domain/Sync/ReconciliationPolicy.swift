@@ -111,9 +111,9 @@ enum ReconciliationPolicy {
 
         if facts.hasPendingLocalMutation {
             switch progress {
-            case .unchanged:
+            case .unchanged, .unknown:
                 return .keepLocal
-            case .newer, .older, .unknown:
+            case .newer, .older:
                 return .conflict
             }
         }

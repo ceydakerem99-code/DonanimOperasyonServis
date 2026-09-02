@@ -174,7 +174,7 @@ const server = http.createServer(async (req, res) => {
   await serveStatic(req, res);
 });
 
-server.listen(port, () => {
+server.listen(port, "0.0.0.0", () => {
   console.log(`Survey dev server listening on http://127.0.0.1:${port}`);
   console.log(`Firestore emulator: ${process.env.FIRESTORE_EMULATOR_HOST}`);
   console.log(`Project ID: ${projectId}`);

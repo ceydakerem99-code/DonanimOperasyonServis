@@ -255,6 +255,77 @@ final class ReconciliationPolicyTests: XCTestCase {
         )
     }
 
+    func testPendingMutationWithUnknownVersionsAndContentDiffKeepsLocal() {
+        XCTAssertEqual(
+            ReconciliationPolicy.decide(facts(
+                equal: false,
+                localVersion: 1,
+                remoteVersion: nil,
+                lastSynced: 0,
+                pending: true
+            )),
+            .keepLocal
+        )
+    }
+
+    func testPendingWorkOrderAcceptedVsAssignedWithUnknownVersionsKeepsLocal() {
+        XCTAssertEqual(
+            ReconciliationPolicy.decide(facts(
+                equal: false,
+                localVersion: 1,
+                remoteVersion: nil,
+                lastSynced: 0,
+                pending: true,
+                entityType: .workOrder,
+                localStatus: .accepted,
+                remoteStatus: .assigned
+            )),
+            .keepLocal
+        )
+    }
+
+    func testPendingMutationWithNewerRemoteRemainsConflict() {
+        XCTAssertEqual(
+            ReconciliationPolicy.decide(facts(
+                equal: false,
+                localVersion: 2,
+                remoteVersion: 3,
+                lastSynced: 1,
+                pending: true
+            )),
+            .conflict
+        )
+    }
+
+    func testPendingMutationWithOlderRemoteRemainsConflict() {
+        XCTAssertEqual(
+            ReconciliationPolicy.decide(facts(
+                equal: false,
+                localVersion: 2,
+                remoteVersion: 1,
+                lastSynced: 4,
+                pending: true
+            )),
+            .conflict
+        )
+    }
+
+    func testCompletedVersusAcceptedWithPendingMutationRemainsConflict() {
+        XCTAssertEqual(
+            ReconciliationPolicy.decide(facts(
+                equal: false,
+                localVersion: 1,
+                remoteVersion: nil,
+                lastSynced: 0,
+                pending: true,
+                entityType: .workOrder,
+                localStatus: .completed,
+                remoteStatus: .accepted
+            )),
+            .conflict
+        )
+    }
+
     func testInvalidVersionsNeverAutoPreferRemote() {
         XCTAssertFalse(EntityVersionPolicy.isValid(nil))
         XCTAssertFalse(EntityVersionPolicy.isValid(-1))

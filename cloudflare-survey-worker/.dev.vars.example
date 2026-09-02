@@ -1,0 +1,4 @@
+# Copy to .dev.vars (gitignored) for local `wrangler dev`.
+SURVEY_TOKEN_SECRET=replace-me
+FIREBASE_CLIENT_EMAIL=replace-me@donanimoperasyonservis.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"

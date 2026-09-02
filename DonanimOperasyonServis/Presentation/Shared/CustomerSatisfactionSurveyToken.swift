@@ -2,14 +2,19 @@ import CryptoKit
 import Foundation
 
 enum CustomerSatisfactionSurveyWebConfig {
-    #if DEBUG
-    static let baseURL = "https://internship-repair-drinking-strip.trycloudflare.com"
-    #else
-    static let baseURL = "https://survey.donanimoperasyon.example"
-    #endif
+    static let baseURL = "https://dopsanketsistemi.netlify.app"
 
-    /// Must match `DEFAULT_SURVEY_TOKEN_SECRET` in `functions/src/survey/token.ts`.
-    static let tokenSecret = "dops-survey-dev-secret"
+    /// Reads `SurveyTokenSecret` from Info.plist (populated via
+    /// gitignored `Config/SurveyProductionSecrets.xcconfig`).
+    /// Falls back to local dev secret if unconfigured.
+    static var tokenSecret: String {
+        if let value = Bundle.main.object(forInfoDictionaryKey: "SurveyTokenSecret") as? String,
+           !value.isEmpty,
+           !value.contains("$(") {
+            return value
+        }
+        return "dops-survey-dev-secret"
+    }
 }
 
 enum CustomerSatisfactionSurveyToken {

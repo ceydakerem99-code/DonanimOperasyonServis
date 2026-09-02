@@ -3,10 +3,8 @@ import {
   buildStructuredComment,
   validateSubmissionPayload,
 } from "./comment";
-import {
-  DEFAULT_SURVEY_TOKEN_SECRET,
-  verifySurveyToken,
-} from "./token";
+import {surveyTokenSecret} from "./secrets";
+import {verifySurveyToken} from "./token";
 
 export type SurveyContextResponse = {
   workOrderNumber: string;
@@ -15,10 +13,6 @@ export type SurveyContextResponse = {
   completedAt: string | null;
   status: string;
 };
-
-function surveyTokenSecret(): string {
-  return process.env.SURVEY_TOKEN_SECRET ?? DEFAULT_SURVEY_TOKEN_SECRET;
-}
 
 function firestore() {
   return admin.firestore();

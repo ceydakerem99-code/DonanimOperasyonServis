@@ -14,10 +14,6 @@
     ],
     "rewrites": [
       {
-        "source": "/api/survey/**",
-        "function": "surveyApi"
-      },
-      {
         "source": "/survey/**",
         "destination": "/survey/index.html"
       }

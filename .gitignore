@@ -53,6 +53,10 @@ fastlane/test_output
 .env
 .env.*
 !.env.example
+web-survey/.tunnel-url
+Config/SurveyProductionSecrets.xcconfig
+cloudflare-survey-worker/.dev.vars
+cloudflare-survey-worker/.wrangler/
 
 # Build-time generated development gateway host
 Config/Generated/
@@ -69,6 +73,7 @@ RealtimeGateway/RealtimeGateway.Host/secrets/*.json
 # IDE
 .vscode/
 .idea/
+node_modules/
 
 .derivedData/
 DerivedData/

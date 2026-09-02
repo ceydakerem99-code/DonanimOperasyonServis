@@ -33,6 +33,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>SurveyTokenSecret</key>
+	<string>$(SURVEY_TOKEN_SECRET)</string>
 	<key>RealtimeGatewayHost</key>
 	<string>$(REALTIME_GATEWAY_HOST)</string>
 	<key>RealtimeGatewayPort</key>
