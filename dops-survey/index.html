@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOPS - Müşteri Memnuniyet Anketi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Loading Overlay -->
+    <div class="loading-overlay active" id="loadingOverlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Anket yükleniyor...</p>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <section class="error-container" id="errorState">
+      <div class="error-card">
+        <div class="error-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v4M12 16h.01"/>
+          </svg>
+        </div>
+        <h2 class="error-title">Bir Sorun Oluştu</h2>
+        <p class="error-message" id="errorMessage">Anket yüklenirken bir hata oluştu.</p>
+        <a href="/" class="btn-primary" style="text-decoration:none;margin-top:8px;">
+          Ana Sayfaya Dön
+        </a>
+      </div>
+    </section>
+
+    <!-- App Content (hidden until router loads survey) -->
+    <div id="appContent" class="app-content-hidden">
+    <!-- Desktop Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="14" r="12" stroke="white" stroke-width="2"/>
+              <path d="M9 14.5L12.5 18L19 11" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="logo-name">DOPS</span>
+            <span class="logo-desc">Donanım Operasyon Servisi</span>
+          </div>
+        </div>
+      </div>
+      <nav class="stepper">
+        <div class="step active" data-step="1">
+          <div class="step-number">1</div>
+          <span class="step-label">Anket</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" data-step="2">
+          <div class="step-number">2</div>
+          <span class="step-label">Değerlendirme</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" data-step="3">
+          <div class="step-number">3</div>
+          <span class="step-label">Yorum</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step" data-step="4">
+          <div class="step-number">4</div>
+          <span class="step-label">Teşekkürler</span>
+        </div>
+      </nav>
+      <div class="header-right">
+        <div class="secure-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Güvenli Anket</span>
+        </div>
+        <small class="secure-sub">Verileriniz korunmaktadır.</small>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- ============ STEP 1: Welcome / Anket ============ -->
+      <section class="step-content step-1 active" id="step1">
+        <div class="layout-split">
+          <!-- Left Panel -->
+          <aside class="left-panel">
+            <div class="left-panel-inner">
+              <h1 class="hero-title">Görüşleriniz<br>Bizim için <span class="highlight">Değerli</span></h1>
+              <p class="hero-desc">Size daha iyi hizmet sunabilmemiz için lütfen birkaç soruyu yanıtlayarak deneyiminizi bizimle paylaşın.</p>
+              <div class="info-chip">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span>Bu anket yaklaşık 2 dakika sürecektir.</span>
+              </div>
+              <div class="trust-features-mini">
+                <div class="trust-item-mini">
+                  <div class="trust-icon-mini">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </div>
+                  <div>
+                    <strong>Güvenli</strong>
+                    <small>256-bit SSL</small>
+                  </div>
+                </div>
+                <div class="trust-item-mini">
+                  <div class="trust-icon-mini">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                  <div>
+                    <strong>Anonim</strong>
+                    <small>Gizli bilgi yok</small>
+                  </div>
+                </div>
+                <div class="trust-item-mini">
+                  <div class="trust-icon-mini">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  </div>
+                  <div>
+                    <strong>Hızlı</strong>
+                    <small>Sadece 2 dk</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Right Panel: Rating Form -->
+          <div class="right-panel">
+            <div class="form-card">
+              <div class="form-header">
+                <h2>Hizmetimizi Değerlendirin</h2>
+                <p>Lütfen her bir başlığı 1 ile 5 arasında puanlayın.</p>
+              </div>
+
+              <div class="rating-list">
+                <div class="rating-row">
+                  <div class="rating-info">
+                    <div class="rating-icon blue">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-6 0v4"/><path d="M5 11h14a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7a2 2 0 012-2z"/></svg>
+                    </div>
+                    <div>
+                      <strong>Genel Memnuniyet</strong>
+                      <small>Hizmetimizden genel memnuniyet düzeyiniz</small>
+                    </div>
+                  </div>
+                  <div class="rating-buttons" data-category="genel">
+                    <button class="rate-btn" data-value="1">1</button>
+                    <button class="rate-btn" data-value="2">2</button>
+                    <button class="rate-btn" data-value="3">3</button>
+                    <button class="rate-btn" data-value="4">4</button>
+                    <button class="rate-btn" data-value="5">5</button>
+                  </div>
+                </div>
+
+                <div class="rating-row">
+                  <div class="rating-info">
+                    <div class="rating-icon indigo">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    </div>
+                    <div>
+                      <strong>Hizmet Kalitesi</strong>
+                      <small>Sunulan hizmetin kalitesi nasıldı?</small>
+                    </div>
+                  </div>
+                  <div class="rating-buttons" data-category="kalite">
+                    <button class="rate-btn" data-value="1">1</button>
+                    <button class="rate-btn" data-value="2">2</button>
+                    <button class="rate-btn" data-value="3">3</button>
+                    <button class="rate-btn" data-value="4">4</button>
+                    <button class="rate-btn" data-value="5">5</button>
+                  </div>
+                </div>
+
+                <div class="rating-row">
+                  <div class="rating-info">
+                    <div class="rating-icon teal">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                    </div>
+                    <div>
+                      <strong>Personel İlgisi</strong>
+                      <small>Personelimizin ilgi ve alakasından memnun kaldınız mı?</small>
+                    </div>
+                  </div>
+                  <div class="rating-buttons" data-category="personel">
+                    <button class="rate-btn" data-value="1">1</button>
+                    <button class="rate-btn" data-value="2">2</button>
+                    <button class="rate-btn" data-value="3">3</button>
+                    <button class="rate-btn" data-value="4">4</button>
+                    <button class="rate-btn" data-value="5">5</button>
+                  </div>
+                </div>
+
+                <div class="rating-row">
+                  <div class="rating-info">
+                    <div class="rating-icon sky">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    </div>
+                    <div>
+                      <strong>Çözüm Hızı</strong>
+                      <small>Sorunuzun çözüm süresi için yeterli miydi?</small>
+                    </div>
+                  </div>
+                  <div class="rating-buttons" data-category="hiz">
+                    <button class="rate-btn" data-value="1">1</button>
+                    <button class="rate-btn" data-value="2">2</button>
+                    <button class="rate-btn" data-value="3">3</button>
+                    <button class="rate-btn" data-value="4">4</button>
+                    <button class="rate-btn" data-value="5">5</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Experience Emoji Section -->
+              <div class="experience-section">
+                <h3>Deneyiminizi Nasıl Tanımlarsınız?</h3>
+                <p>Deneyiminizi en iyi ifade eden seçeneği seçin.</p>
+                <div class="emoji-options">
+                  <button class="emoji-btn" data-value="cok-kotu">
+                    <div class="emoji-circle red">
+                      <span class="emoji">😡</span>
+                    </div>
+                    <span class="emoji-label">Çok Kötü</span>
+                  </button>
+                  <button class="emoji-btn" data-value="kotu">
+                    <div class="emoji-circle orange">
+                      <span class="emoji">😞</span>
+                    </div>
+                    <span class="emoji-label">Kötü</span>
+                  </button>
+                  <button class="emoji-btn" data-value="orta">
+                    <div class="emoji-circle yellow">
+                      <span class="emoji">😐</span>
+                    </div>
+                    <span class="emoji-label">Orta</span>
+                  </button>
+                  <button class="emoji-btn" data-value="iyi">
+                    <div class="emoji-circle blue">
+                      <span class="emoji">🙂</span>
+                    </div>
+                    <span class="emoji-label">İyi</span>
+                  </button>
+                  <button class="emoji-btn" data-value="cok-iyi">
+                    <div class="emoji-circle green">
+                      <span class="emoji">😃</span>
+                    </div>
+                    <span class="emoji-label">Çok İyi</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-footer">
+                <button class="btn-primary" id="btnStep1Next">
+                  Devam Et
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STEP 2: Değerlendirme ============ -->
+      <section class="step-content step-2" id="step2">
+        <div class="layout-split">
+          <aside class="left-panel">
+            <div class="left-panel-inner">
+              <h1 class="hero-title">Biraz Daha<br><span class="highlight">Detay</span></h1>
+              <p class="hero-desc">Hizmetimizi daha iyi anlamamız için birkaç ek soru yanıtlamanızı rica ediyoruz.</p>
+              <div class="info-chip">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                <span>Yanıtlarınız tamamen gizli tutulacaktır.</span>
+              </div>
+            </div>
+          </aside>
+          <div class="right-panel">
+            <div class="form-card">
+              <div class="form-header">
+                <h2>Ek Değerlendirme</h2>
+                <p>Lütfen aşağıdaki soruları cevaplayın.</p>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">Hizmetimizi daha önce kullandınız mı?</label>
+                <div class="radio-group">
+                  <label class="radio-card">
+                    <input type="radio" name="previous" value="evet">
+                    <span class="radio-card-inner">Evet</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="previous" value="hayir">
+                    <span class="radio-card-inner">Hayır</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="previous" value="hatirlamiyorum">
+                    <span class="radio-card-inner">Hatırlamıyorum</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">Bizi nasıl buldunuz?</label>
+                <div class="radio-group">
+                  <label class="radio-card">
+                    <input type="radio" name="source" value="internet">
+                    <span class="radio-card-inner">İnternet Araması</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="source" value="tavsiye">
+                    <span class="radio-card-inner">Tavsiye</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="source" value="sosyal">
+                    <span class="radio-card-inner">Sosyal Medya</span>
+                  </label>
+                  <label class="radio-card">
+                    <input type="radio" name="source" value="diger">
+                    <span class="radio-card-inner">Diğer</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">Hizmetimizi başkalarına tavsiye eder misiniz?</label>
+                <div class="nps-scale">
+                  <div class="nps-labels">
+                    <span>Kesinlikle Hayır</span>
+                    <span>Kesinlikle Evet</span>
+                  </div>
+                  <div class="nps-buttons">
+                    <button class="nps-btn" data-value="1">1</button>
+                    <button class="nps-btn" data-value="2">2</button>
+                    <button class="nps-btn" data-value="3">3</button>
+                    <button class="nps-btn" data-value="4">4</button>
+                    <button class="nps-btn" data-value="5">5</button>
+                    <button class="nps-btn" data-value="6">6</button>
+                    <button class="nps-btn" data-value="7">7</button>
+                    <button class="nps-btn" data-value="8">8</button>
+                    <button class="nps-btn" data-value="9">9</button>
+                    <button class="nps-btn" data-value="10">10</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-footer">
+                <button class="btn-secondary" id="btnStep2Back">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                  Geri
+                </button>
+                <button class="btn-primary" id="btnStep2Next">
+                  Devam Et
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STEP 3: Yorum ============ -->
+      <section class="step-content step-3" id="step3">
+        <div class="layout-split">
+          <aside class="left-panel">
+            <div class="left-panel-inner">
+              <h1 class="hero-title">Son Bir<br><span class="highlight">Adım</span></h1>
+              <p class="hero-desc">Deneyiminizle ilgili eklemek istediğiniz bir şey varsa, lütfen bizimle paylaşın.</p>
+              <div class="info-chip">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+                <span>Yorumunuz bizim için çok değerlidir.</span>
+              </div>
+            </div>
+          </aside>
+          <div class="right-panel">
+            <div class="form-card">
+              <div class="form-header">
+                <h2>Yorumunuz</h2>
+                <p>Deneyiminizi kendi cümlelerinizle anlatın.</p>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">En beğendiğiniz şey neydi?</label>
+                <textarea class="text-input" rows="3" placeholder="Örneğin: Personelin güler yüzlü yaklaşımı..."></textarea>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">Geliştirebileceğimiz bir alan var mı?</label>
+                <textarea class="text-input" rows="3" placeholder="Örneğin: Bekleme süresi biraz uzundu..."></textarea>
+              </div>
+
+              <div class="question-group">
+                <label class="q-label">Eklemek istediğiniz başka bir şey var mı? <span class="optional">(İsteğe bağlı)</span></label>
+                <textarea class="text-input" rows="3" placeholder="Ek görüş ve önerileriniz..."></textarea>
+              </div>
+
+              <div class="form-footer">
+                <button class="btn-secondary" id="btnStep3Back">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                  Geri
+                </button>
+                <button class="btn-primary" id="btnStep3Next">
+                  Anketi Gönder
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STEP 4: Teşekkürler ============ -->
+      <section class="step-content step-4" id="step4">
+        <div class="thank-you-container">
+          <div class="thank-you-card">
+            <div class="thank-logo">
+              <div class="logo">
+                <div class="logo-icon">
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <circle cx="14" cy="14" r="12" stroke="white" stroke-width="2"/>
+                    <path d="M9 14.5L12.5 18L19 11" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div class="logo-text">
+                  <span class="logo-name">DOPS</span>
+                  <span class="logo-desc">Donanım Operasyon Servisi</span>
+                </div>
+              </div>
+            </div>
+            <div class="success-icon">
+              <div class="success-circle">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                  <path d="M14 24.5L21 31.5L34 18.5" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+            <h1 class="thank-title">Teşekkürler!</h1>
+            <p class="thank-desc">Değerli geri bildiriminiz için teşekkür ederiz.<br>Görüşleriniz hizmet kalitemizi artırmamıza yardımcı oluyor.</p>
+            <div class="saved-badge">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+              <div>
+                <strong>Anketiniz başarıyla kaydedildi.</strong>
+                <small>Geri bildiriminiz bizim için çok değerli!</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trust Features Bottom -->
+          <div class="trust-bar">
+            <div class="trust-item">
+              <div class="trust-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <strong>Güvenli</strong>
+              <small>Verileriniz 256-bit SSL ile korunmaktadır.</small>
+            </div>
+            <div class="trust-item">
+              <div class="trust-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <strong>Anonim</strong>
+              <small>Kişisel bilgileriniz saklanmaz.</small>
+            </div>
+            <div class="trust-item">
+              <div class="trust-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+              <strong>Hızlı</strong>
+              <small>Anketi tamamlamak sadece 2 dakika.</small>
+            </div>
+            <div class="trust-item">
+              <div class="trust-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+              </div>
+              <strong>Önemli</strong>
+              <small>Geri bildiriminizle hizmetimizi geliştiriyoruz.</small>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Verileriniz korunmaktadır.</span>
+    </footer>
+    </div><!-- /appContent -->
+  </div>
+
+  <script src="/config.js"></script>
+  <script src="/api.js"></script>
+  <script src="/app.js"></script>
+  <script src="/router.js"></script>
+</body>
+</html>
