@@ -26,12 +26,12 @@ enum DemoDataSeeder {
 
     static let accounts: [DemoAccountRecord] = [
         DemoAccountRecord(
-            email: "admin@dops.test",
-            password: "DopsTest123!",
+            email: "admin@dops.com",
+            password: "123admin",
             user: User(
                 id: UserID("demo-admin"),
-                email: "admin@dops.test",
-                fullName: "Admin Demo",
+                email: "admin@dops.com",
+                fullName: "Admin",
                 role: .admin,
                 phoneNumber: PhoneNumber("+905551110001"),
                 isActive: true,
@@ -40,12 +40,12 @@ enum DemoDataSeeder {
             )
         ),
         DemoAccountRecord(
-            email: "operator@dops.test",
-            password: "DopsTest123!",
+            email: "ceydakerem@dops.com",
+            password: "123ceyda",
             user: User(
                 id: UserID("demo-operator"),
-                email: "operator@dops.test",
-                fullName: "Mehmet Kaya",
+                email: "ceydakerem@dops.com",
+                fullName: "Ceyda Kerem",
                 role: .operator,
                 phoneNumber: PhoneNumber("+905551110002"),
                 isActive: true,
@@ -54,14 +54,28 @@ enum DemoDataSeeder {
             )
         ),
         DemoAccountRecord(
-            email: "technician@dops.test",
-            password: "DopsTest123!",
+            email: "beyzakerem@dops.com",
+            password: "123beyza",
+            user: User(
+                id: UserID("demo-operator-2"),
+                email: "beyzakerem@dops.com",
+                fullName: "Beyza Kerem",
+                role: .operator,
+                phoneNumber: PhoneNumber("+905551110003"),
+                isActive: true,
+                createdAt: referenceDate,
+                updatedAt: referenceDate
+            )
+        ),
+        DemoAccountRecord(
+            email: "mehmetkerem@dops.com",
+            password: "123mehmet",
             user: User(
                 id: UserID("demo-technician"),
-                email: "technician@dops.test",
-                fullName: "Ahmet Yılmaz",
+                email: "mehmetkerem@dops.com",
+                fullName: "Mehmet Kerem",
                 role: .technician,
-                phoneNumber: PhoneNumber("+905551110003"),
+                phoneNumber: PhoneNumber("+905551110004"),
                 isActive: true,
                 createdAt: referenceDate,
                 updatedAt: referenceDate
@@ -115,16 +129,10 @@ enum DemoDataSeeder {
     // MARK: - Public API
 
     static func seedIfNeeded(container: DIContainer) async {
-        let report = SeedReport()
-        await seedAccounts(container: container, report: report)
-        await seedOperationalDataIfNeeded(container: container, report: report)
-        if report.requiredFailures.isEmpty {
-            AppLogger.app.info("DEBUG demo data ready.")
-        } else {
-            AppLogger.app.error(
-                "DEBUG demo seed incomplete: \(report.requiredFailures.joined(separator: "; "))"
-            )
-        }
+        // Demo data is disabled during normal application startup.
+        // Live application data comes from Firebase.
+        // Demo data can still be loaded explicitly with loadDemoData().
+        AppLogger.app.info("DEBUG demo data seed skipped.")
     }
 
     /// Idempotent force load — clears known demo IDs then reseeds.
@@ -226,7 +234,7 @@ enum DemoDataSeeder {
             }
         }
 
-        for id in demoUserIds where id != "demo-admin" && id != "demo-operator" && id != "demo-technician" {
+        for id in demoUserIds {
             await deleteIgnoringNotFound {
                 try await container.userRepository.delete(id: UserID(id))
             }

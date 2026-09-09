@@ -12,6 +12,7 @@ enum FirstAdminBootstrap {
     /// Extra Auth UIDs still allowed to self-seed (earlier test user).
     static let additionalBootstrapUIDs: Set<String> = [
         "4vioyXm2XqcsWBW7NUD0Bbxii2z1",
+        "TOVxT7vCd3PVAQtnloO6J0Jg0FH2",
     ]
 
     /// Emails that may self-create an `admin` Firestore profile once.

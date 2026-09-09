@@ -13,15 +13,18 @@ final class AuthSessionController {
 
     private let authRepository: any AuthRepository
     private let realtimeCoordinator: RealtimeCoordinator?
+    private let localDirectoryCacheRefresh: LocalDirectoryCacheRefresh?
     private var observationTask: Task<Void, Never>?
     private var restoreSessionTask: Task<Void, Never>?
 
     init(
         authRepository: any AuthRepository,
-        realtimeCoordinator: RealtimeCoordinator? = nil
+        realtimeCoordinator: RealtimeCoordinator? = nil,
+        localDirectoryCacheRefresh: LocalDirectoryCacheRefresh? = nil
     ) {
         self.authRepository = authRepository
         self.realtimeCoordinator = realtimeCoordinator
+        self.localDirectoryCacheRefresh = localDirectoryCacheRefresh
     }
 
     func start() async {
@@ -46,6 +49,7 @@ final class AuthSessionController {
                 guard !Task.isCancelled else { return }
                 state = .authenticated(user)
                 realtimeCoordinator?.handleAuthenticatedSession()
+                await refreshRemoteDirectory()
             } else {
                 guard !Task.isCancelled else { return }
                 state = .unauthenticated
@@ -75,6 +79,7 @@ final class AuthSessionController {
             guard !Task.isCancelled else { return }
             state = .authenticated(user)
             realtimeCoordinator?.handleAuthenticatedSession()
+            await refreshRemoteDirectory()
         } catch let error as DomainError {
             state = .authenticationError(error)
         } catch {
@@ -111,6 +116,18 @@ final class AuthSessionController {
         } catch {
             state = .authenticationError(.authenticationFailed(.unknown))
         }
+    }
+
+    private func refreshRemoteDirectory() async {
+        guard let localDirectoryCacheRefresh else { return }
+
+        print("🔥 DIRECTORY REFRESH START")
+
+        await localDirectoryCacheRefresh.refreshUsers()
+        await localDirectoryCacheRefresh.refreshCustomers()
+        await localDirectoryCacheRefresh.refreshWorkOrders()
+
+        print("🔥 DIRECTORY REFRESH COMPLETE")
     }
 
     func clearAuthenticationError() {

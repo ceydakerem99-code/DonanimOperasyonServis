@@ -12,7 +12,7 @@ struct FirebaseUserRepository: UserRepository {
     }
 
     func fetch(id: UserID) async throws -> User {
-        try await FirebaseRepositoryMapper.run(entity: "User", id: id.rawValue) {
+        return try await FirebaseRepositoryMapper.run(entity: "User", id: id.rawValue) {
             guard let dto = try await dataSource.fetch(
                 FirestoreUserDTO.self,
                 collection: .users,
@@ -20,6 +20,7 @@ struct FirebaseUserRepository: UserRepository {
             ) else {
                 throw DomainError.notFound(entity: "User", id: id.rawValue)
             }
+
             return try FirebaseRepositoryMapper.requireDomain(dto, entity: "User") { $0.toDomain() }
         }
     }

@@ -116,6 +116,13 @@ actor LocalToRemoteSyncManager: SyncManaging {
         try await requeueUnauthorizedChildrenIfRemoteParentReady(now: now)
         try await backfillMissingActorUserIdOnPendingOperations(now: now)
 
+        // Completed work orders may still have pending evidence operations.
+        // Child evidence must be given a chance to sync before any terminal
+        // parent-completion acknowledgement can suppress the chain.
+        await AppLogger.sync.info(
+            "SYNC EVIDENCE PRIORITY pending child evidence will be drained before terminal acknowledgement"
+        )
+
         let allPending = sortForDrain(try await queue.fetchPending(now: now))
         let foreignSkipped = try await SyncOperationUserScope.foreignOperationCount(
             in: allPending,

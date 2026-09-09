@@ -10,13 +10,11 @@ enum LiveFirestoreConfiguration {
 
     /// Disk-backed Firestore cache is disabled.
     static let isPersistentCacheEnabled = false
-    #if DEBUG && targetEnvironment(simulator)
-    static let usesLocalEmulator = true
-    static let emulatorHost = "127.0.0.1"
-    static let emulatorPort = 8080
-    #else
+
+    /// Firestore Emulator is disabled.
+    ///
+    /// The simulator uses the real Firebase Firestore backend.
     static let usesLocalEmulator = false
-    #endif
 
     /// Settings use an in-memory SDK cache, never `PersistentCacheSettings`.
     static var usesMemoryCacheSettings: Bool {
@@ -34,15 +32,15 @@ enum LiveFirestoreConfiguration {
     static var readSource: FirestoreSource { .server }
 
     /// Settings applied to `Firestore.firestore()` before any I/O.
+    ///
+    /// No Firestore Emulator is configured here.
+    /// The app therefore connects to the real Firebase Firestore project.
+    ///
     /// Memory cache may still exist inside the SDK process; it is
     /// not a durable local store and is never treated as source of
     /// truth.
     static func makeSettings() -> FirestoreSettings {
         let settings = FirestoreSettings()
-        #if DEBUG && targetEnvironment(simulator)
-        settings.host = "\(emulatorHost):\(emulatorPort)"
-        settings.isSSLEnabled = false
-        #endif
         settings.cacheSettings = MemoryCacheSettings()
         return settings
     }

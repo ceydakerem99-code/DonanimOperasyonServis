@@ -110,7 +110,15 @@ struct FirebaseAuthRepository: AuthRepository {
             user = try await remoteUsers.fetch(id: userID)
         } catch let error as DomainError {
             if case .notFound = error {
-                if let bootstrapped = try await bootstrapFirstAdminIfNeeded(uid: uid, now: now) {
+                // Auth UID ile Firestore document bulunamazsa,
+                // Auth e-postası üzerinden mevcut kullanıcı profilini bul.
+                // Bu fallback mevcut iş emirleri ve ilişkili verileri değiştirmez.
+                if let email = authService.currentEmail,
+                   let emailUser = try await remoteUsers.findByEmail(email),
+                   emailUser.isActive {
+                    print("✅ USER PROFILE EMAIL FALLBACK | UID=\(uid) | email=\(email)")
+                    user = emailUser
+                } else if let bootstrapped = try await bootstrapFirstAdminIfNeeded(uid: uid, now: now) {
                     user = bootstrapped
                 } else {
                     try? await authService.signOut()

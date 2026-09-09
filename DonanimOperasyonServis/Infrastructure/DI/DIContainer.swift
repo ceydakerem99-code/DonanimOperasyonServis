@@ -264,6 +264,10 @@ final class DIContainer: Sendable {
             remoteCustomers: remoteEntities.customers,
             localWorkOrders: self.workOrderRepository,
             remoteWorkOrders: remoteEntities.workOrders,
+            localPhotos: self.workOrderPhotoRepository,
+            remotePhotos: remoteEntities.photos,
+            localSignatures: self.signatureRepository,
+            remoteSignatures: remoteEntities.signatures,
             localNotifications: self.notificationRepository,
             remoteNotifications: remoteEntities.notifications,
             localCustomerSatisfactions: self.customerSatisfactionRepository,
@@ -318,7 +322,8 @@ final class DIContainer: Sendable {
     func makeAuthSessionController() -> AuthSessionController {
         AuthSessionController(
             authRepository: authRepository,
-            realtimeCoordinator: realtimeCoordinator
+            realtimeCoordinator: realtimeCoordinator,
+            localDirectoryCacheRefresh: localDirectoryCacheRefresh
         )
     }
 

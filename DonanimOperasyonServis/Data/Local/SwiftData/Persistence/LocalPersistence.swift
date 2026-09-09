@@ -29,6 +29,8 @@ actor LocalPersistence {
 
     // MARK: - User
 
+
+
     func fetchUser(id: String) throws -> User? {
         let model = try firstModel(UserModel.self, where: #Predicate { $0.id == id })
         return try model.map { try requireDecoded($0.toDomain(), entity: "User") }
@@ -380,6 +382,17 @@ actor LocalPersistence {
             let model = CustomerSatisfactionModel(domain: satisfaction)
             model.workOrder = try firstModel(WorkOrderModel.self, where: #Predicate { $0.id == workOrderId })
             modelContext.insert(model)
+        }
+        try modelContext.save()
+    }
+
+    // TEMP: clear local customer satisfaction records
+    func deleteAllCustomerSatisfactions() throws {
+        let rows = try modelContext.fetch(
+            FetchDescriptor<CustomerSatisfactionModel>()
+        )
+        for row in rows {
+            modelContext.delete(row)
         }
         try modelContext.save()
     }

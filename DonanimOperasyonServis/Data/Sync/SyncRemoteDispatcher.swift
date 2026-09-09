@@ -21,6 +21,7 @@ enum SyncRemoteDispatcher {
         remote: SyncEntityRepositories,
         storage: (any FirebaseStorageDataSource)? = nil
     ) async throws {
+        print("🔥 SYNC: \(operation.entityType) | \(operation.entityId) | \(operation.operationType)")
         switch operation.entityType {
         case .user:
             try await dispatchUser(operation, local: local, remote: remote)

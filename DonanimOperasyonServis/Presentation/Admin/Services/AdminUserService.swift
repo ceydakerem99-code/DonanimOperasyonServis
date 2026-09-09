@@ -20,6 +20,17 @@ struct AdminUserService: Sendable {
             isActive: isActive,
             at: now
         )
+        // Kullanıcı değişikliğini online durumda Firestore'a hemen yaz.
+        // SyncQueue yine tutulur; böylece retry/offline mimarisi korunur.
+        if await networkReachability.isReachable {
+            do {
+                try await remoteUsers.save(updated)
+                print("🔥 ADMIN USER REMOTE SAVE | \(updated.id.rawValue) | active=\(updated.isActive) | role=\(updated.role.rawValue)")
+            } catch {
+                print("⚠️ ADMIN USER REMOTE SAVE FAILED | \(updated.id.rawValue) | \(error)")
+            }
+        }
+
         try await AdminSyncEnqueue.enqueueUpdate(
             entityType: .user,
             entityId: userId.rawValue,
@@ -42,6 +53,16 @@ struct AdminUserService: Sendable {
             role: role,
             at: now
         )
+        // Rol değişikliğini de online durumda Firestore'a hemen yaz.
+        if await networkReachability.isReachable {
+            do {
+                try await remoteUsers.save(updated)
+                print("🔥 ADMIN USER REMOTE SAVE | \(updated.id.rawValue) | active=\(updated.isActive) | role=\(updated.role.rawValue)")
+            } catch {
+                print("⚠️ ADMIN USER REMOTE SAVE FAILED | \(updated.id.rawValue) | \(error)")
+            }
+        }
+
         try await AdminSyncEnqueue.enqueueUpdate(
             entityType: .user,
             entityId: userId.rawValue,

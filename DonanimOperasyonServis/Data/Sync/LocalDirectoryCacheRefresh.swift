@@ -13,6 +13,10 @@ struct LocalDirectoryCacheRefresh: Sendable {
     let remoteCustomers: CustomerRepository
     let localWorkOrders: WorkOrderRepository
     let remoteWorkOrders: WorkOrderRepository
+    let localPhotos: WorkOrderPhotoRepository
+    let remotePhotos: WorkOrderPhotoRepository
+    let localSignatures: SignatureRepository
+    let remoteSignatures: SignatureRepository
     let localNotifications: NotificationRepository
     let remoteNotifications: NotificationRepository
     let localCustomerSatisfactions: any CustomerSatisfactionRepository
@@ -27,13 +31,33 @@ struct LocalDirectoryCacheRefresh: Sendable {
     /// Pulls all users from Firestore and upserts into local SwiftData for admin directory views.
     /// No-op when offline. Remote failures are logged and do not mutate local cache.
     func refreshUsers() async {
-        guard await networkReachability.isReachable else { return }
+        let isReachable = await networkReachability.isReachable
+        print("🔥 USER REFRESH START | reachable=\(isReachable)")
+
+        guard isReachable else {
+            print("🔥 USER REFRESH SKIPPED | device appears offline")
+            return
+        }
+
         do {
             let remoteList = try await remoteUsers.list(role: nil, isActive: nil)
+            print("🔥 USER REFRESH FIRESTORE COUNT: \(remoteList.count)")
+
             for user in remoteList {
-                try await localUsers.save(user)
+                print("🔥 USER REFRESH REMOTE USER: \(user.fullName) | \(user.email) | \(user.role.rawValue) | \(user.id.rawValue)")
+
+                do {
+                    try await localUsers.save(user)
+                    print("🔥 USER REFRESH LOCAL SAVE OK: \(user.email)")
+                } catch {
+                    print("🔥 USER REFRESH LOCAL SAVE FAILED: \(user.email) | \(error)")
+                    throw error
+                }
             }
+
+            print("🔥 USER REFRESH COMPLETE")
         } catch {
+            print("🔥 USER REFRESH FAILED: \(error)")
             AppLogger.app.warning("User directory refresh failed: \(error)")
         }
     }
@@ -80,6 +104,20 @@ struct LocalDirectoryCacheRefresh: Sendable {
             let remoteList = try await remoteWorkOrders.list(filter: filter)
             for remoteOrder in remoteList {
                 await reconcileRemoteWorkOrder(remoteOrder)
+
+                do {
+                    let photos = try await remotePhotos.list(for: remoteOrder.id)
+                    for photo in photos {
+                        try await localPhotos.save(photo)
+                    }
+
+                    let signatures = try await remoteSignatures.list(for: remoteOrder.id)
+                    for signature in signatures {
+                        try await localSignatures.save(signature)
+                    }
+                } catch {
+                    AppLogger.app.warning("Work order media refresh failed: \(error)")
+                }
             }
         } catch {
             AppLogger.app.warning("Work order directory refresh failed: \(error)")

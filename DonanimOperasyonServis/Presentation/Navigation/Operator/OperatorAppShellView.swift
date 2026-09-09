@@ -344,6 +344,7 @@ struct OperatorAppShellView: View {
         #if DEBUG
         case .debugDeveloperTools:
             DebugDeveloperToolsView(
+                currentUser: user,
                 showsDemoDataLoad: false,
                 onOpenCustomerSatisfactionSurvey: { router.push(.customerSatisfactionSurvey($0)) }
             )

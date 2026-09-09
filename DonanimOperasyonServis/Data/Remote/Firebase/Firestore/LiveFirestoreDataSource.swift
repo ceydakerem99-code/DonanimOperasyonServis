@@ -39,6 +39,8 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
         let ref = firestore.collection(collection.rawValue).document(id)
         do {
             let snapshot = try await ref.getDocument(source: LiveFirestoreConfiguration.readSource)
+
+
             guard snapshot.exists else { return nil }
             return try snapshot.data(as: T.self)
         } catch {
@@ -61,6 +63,8 @@ final class LiveFirestoreDataSource: FirestoreDataSource, @unchecked Sendable {
         }
         do {
             let snapshot = try await query.getDocuments(source: LiveFirestoreConfiguration.readSource)
+            for document in snapshot.documents {
+            }
             return try snapshot.documents.map { try $0.data(as: T.self) }
         } catch {
             throw FirebaseError.map(error)

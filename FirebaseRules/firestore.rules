@@ -236,6 +236,7 @@ service cloud.firestore {
     && (
       userId == "idpKED07DNXjcsiuJ1pTC8bk9EuJv2"
       || userId == "4vioyXm2XqcsWBW7NUD0Bbxii2z1"
+      || userId == "TOVxT7vCd3PVAQtnloO6J0Jg0FH2"
       || request.resource.data.email == "adminpanel@dops.com"
     );
 

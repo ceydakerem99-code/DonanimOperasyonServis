@@ -3,6 +3,8 @@ import SwiftUI
 
 /// DEBUG-only developer tools: demo seed/clear, mock GPS, network sim, sync report.
 struct DebugDeveloperToolsView: View {
+
+    let currentUser: User?
     var showsDemoDataLoad = true
     var onOpenCustomerSatisfactionSurvey: ((CustomerSatisfactionID) -> Void)? = nil
     @Environment(\.diContainer) private var container
@@ -13,6 +15,16 @@ struct DebugDeveloperToolsView: View {
     @State private var demoSurveyId = ""
     /// UI mirror only — authoritative state lives in `DebuggableNetworkReachability`.
     @State private var isOfflineSimulated = false
+
+    init(
+        currentUser: User? = nil,
+        showsDemoDataLoad: Bool = true,
+        onOpenCustomerSatisfactionSurvey: ((CustomerSatisfactionID) -> Void)? = nil
+    ) {
+        self.currentUser = currentUser
+        self.showsDemoDataLoad = showsDemoDataLoad
+        self.onOpenCustomerSatisfactionSurvey = onOpenCustomerSatisfactionSurvey
+    }
 
     var body: some View {
         ScrollView {
@@ -35,6 +47,8 @@ struct DebugDeveloperToolsView: View {
                                 }
                             }
                         }
+
+
                         Button("Demo Verilerini Temizle") {
                             Task {
                                 isBusy = true
@@ -45,6 +59,30 @@ struct DebugDeveloperToolsView: View {
                         }
                         .disabled(isBusy)
                         .foregroundStyle(AppColor.danger)
+                    }
+                }
+
+                section("İş Emri Şablonları") {
+                    VStack(alignment: .leading, spacing: AppSpacing.s) {
+                        Button("Varsayılan Şablonları Yeniden Oluştur") {
+                            guard let currentUser else {
+                                statusMessage = "Aktif kullanıcı bulunamadı."
+                                lastSeedSucceeded = false
+                                return
+                            }
+
+                            OperatorWorkOrderTemplateService.resetDefaultsSeed(
+                                for: currentUser.id
+                            )
+
+                            statusMessage = "Şablon seed sıfırlandı. İş emri şablonlarını tekrar açın."
+                            lastSeedSucceeded = true
+                        }
+                        .disabled(isBusy || currentUser == nil)
+
+                        Text("Varsayılan iş emri şablonlarını yeniden oluşturmak için seed kaydını sıfırlar.")
+                            .font(AppFont.caption)
+                            .foregroundStyle(AppColor.secondaryText)
                     }
                 }
 

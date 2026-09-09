@@ -2,6 +2,15 @@ import SwiftUI
 
 @main
 struct DonanimOperasyonServisApp: App {
+
+    init() {
+        if ProcessInfo.processInfo.arguments.contains("--legacy-dry-run") {
+            Task {
+                try? await Task.sleep(for: .milliseconds(1500))
+                // DI container app delegate hazır olduğunda çalıştırılacak.
+            }
+        }
+    }
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
