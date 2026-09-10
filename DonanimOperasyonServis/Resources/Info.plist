@@ -33,12 +33,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>SurveyTokenSecret</key>
-	<string>$(SURVEY_TOKEN_SECRET)</string>
-	<key>RealtimeGatewayHost</key>
-	<string>$(REALTIME_GATEWAY_HOST)</string>
-	<key>RealtimeGatewayPort</key>
-	<string>$(REALTIME_GATEWAY_PORT)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Servis öncesi ve sonrası durumu, seri numarası ile kanıt fotoğraflarını çekmek için kamera erişimi gereklidir.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -47,6 +41,12 @@
 	<string>Servis fotoğraflarını gerektiğinde fotoğraf kütüphanesine kaydetmek için erişim gereklidir.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Servis iş emirlerine görsel eklemek için fotoğraf kütüphanesine erişim gereklidir.</string>
+	<key>RealtimeGatewayHost</key>
+	<string>$(REALTIME_GATEWAY_HOST)</string>
+	<key>RealtimeGatewayPort</key>
+	<string>$(REALTIME_GATEWAY_PORT)</string>
+	<key>SurveyTokenSecret</key>
+	<string>$(SURVEY_TOKEN_SECRET)</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

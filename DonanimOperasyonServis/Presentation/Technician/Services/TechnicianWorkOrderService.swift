@@ -171,14 +171,6 @@ struct TechnicianWorkOrderService: Sendable {
             photoId: photoId,
             at: now
         )
-        try await TechnicianSyncEnqueue.enqueueCreate(
-            entityType: .workOrderPhoto,
-            entityId: photo.id,
-            queue: syncOperationRepository,
-            now: now,
-            actorUserId: actor.id.rawValue,
-            payloadReference: orderId.rawValue
-        )
         return photo
     }
 
@@ -245,14 +237,6 @@ struct TechnicianWorkOrderService: Sendable {
             signerName: signerName,
             signatureId: signatureId,
             at: now
-        )
-        try await TechnicianSyncEnqueue.enqueueCreate(
-            entityType: .signature,
-            entityId: signature.id,
-            queue: syncOperationRepository,
-            now: now,
-            actorUserId: actor.id.rawValue,
-            payloadReference: orderId.rawValue
         )
         return signature
     }

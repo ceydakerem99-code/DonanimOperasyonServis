@@ -110,10 +110,15 @@ struct OperatorWorkOrderTemplateService: Sendable {
 
     private func ensureDefaults(actor: User, at now: Date = Date()) async throws {
         let key = Self.defaultsSeededKey(for: actor.id)
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
+
+        let existing = try await repository.list(createdByUserId: actor.id)
+        let existingIDs = Set(existing.map(\.id))
+
         for template in WorkOrderTemplateDefaults.templates(for: actor.id, at: now) {
+            guard !existingIDs.contains(template.id) else { continue }
             try await repository.save(template)
         }
+
         UserDefaults.standard.set(true, forKey: key)
     }
 

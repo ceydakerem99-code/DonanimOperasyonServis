@@ -85,18 +85,19 @@ struct OperatorAppShellView: View {
                 syncProgressStore: syncProgressStore,
                 onSelectWorkOrder: { router.push(.workOrderDetail($0)) },
                 onShowAllUrgent: {
+                    router.selectedTab = .workOrders
                     Task {
                         await workOrderListViewModel.applyDashboardScope(.urgent)
-                        router.selectedTab = .workOrders
                     }
                 },
                 onShowAllCompleted: {
+                    router.selectedTab = .workOrders
                     Task {
                         await workOrderListViewModel.applyDashboardScope(.completed)
-                        router.selectedTab = .workOrders
                     }
                 },
                 onSelectKPI: { selection in
+                    router.selectedTab = .workOrders
                     Task {
                         switch selection {
                         case .openWorkOrders:
@@ -110,19 +111,18 @@ struct OperatorAppShellView: View {
                         case .availableTechnicians, .busyTechnicians:
                             break
                         }
-                        router.selectedTab = .workOrders
                     }
                 },
                 onShowAllTechnicians: {
+                    router.push(.technicians)
                     Task {
                         await technicianListViewModel.clearDashboardScope()
-                        router.push(.technicians)
                     }
                 },
                 onSelectTechnicianStatus: { scope in
+                    router.push(.technicians)
                     Task {
                         await technicianListViewModel.applyDashboardScope(scope)
-                        router.push(.technicians)
                     }
                 }
             )
@@ -194,12 +194,14 @@ struct OperatorAppShellView: View {
                 viewModel: NewWorkOrderWizardViewModel(actor: user, dependencies: dependencies),
                 onFinished: { id in
                     Task { @MainActor in
-                        await workOrderListViewModel.resetToDefaultListingAndLoad()
-                        await dashboardViewModel.load()
                         router.popToRoot()
                         router.selectedTab = .workOrders
-                        await Task.yield()
                         router.push(.workOrderDetail(id))
+
+                        Task {
+                            await workOrderListViewModel.resetToDefaultListingAndLoad()
+                            await dashboardViewModel.load()
+                        }
                     }
                 },
                 onCancel: { router.popToRoot() }

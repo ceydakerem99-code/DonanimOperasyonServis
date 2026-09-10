@@ -41,7 +41,11 @@ struct OperatorWorkOrderService: Sendable {
         request: NewWorkOrderRequest,
         at now: Date = Date()
     ) async throws -> WorkOrder {
-        let order = try await createWorkOrder.execute(actor: actor, request: request, at: now)
+        let order = try await createWorkOrder.execute(
+            actor: actor,
+            request: request,
+            at: now
+        )
 
         let workOrderOperation = try SyncOperation.pending(
             entityType: .workOrder,
@@ -54,10 +58,12 @@ struct OperatorWorkOrderService: Sendable {
         _ = try await syncOperationRepository.enqueue(workOrderOperation)
 
         if let realtimeWorkOrderCreate {
-            _ = await realtimeWorkOrderCreate.submitWorkOrderCreate(
-                order,
-                actorUserId: actor.id.rawValue
-            )
+            Task {
+                _ = await realtimeWorkOrderCreate.submitWorkOrderCreate(
+                    order,
+                    actorUserId: actor.id.rawValue
+                )
+            }
         }
 
         let history = try await statusHistoryRepository.list(for: order.id)
@@ -80,7 +86,9 @@ struct OperatorWorkOrderService: Sendable {
             at: now,
             dependsOnOperationId: workOrderOperation.id
         )
-        await requestSyncDrainIfNeeded()
+
+        requestSyncDrainIfNeeded()
+
         return order
     }
 
@@ -114,7 +122,7 @@ struct OperatorWorkOrderService: Sendable {
             at: now,
             dependsOnOperationId: workOrderOperation.id
         )
-        await requestSyncDrainIfNeeded()
+        requestSyncDrainIfNeeded()
         return order
     }
 
@@ -171,7 +179,9 @@ struct OperatorWorkOrderService: Sendable {
         )
     }
 
-    private func requestSyncDrainIfNeeded() async {
-        await syncLifecycle?.handleNetworkBecameReachable()
+    private func requestSyncDrainIfNeeded() {
+        Task {
+            await syncLifecycle?.handleNetworkBecameReachable()
+        }
     }
 }

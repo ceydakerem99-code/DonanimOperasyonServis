@@ -6,8 +6,9 @@ struct NewWorkOrderWizardView: View {
     var onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            StepIndicator(
+        ZStack {
+            VStack(spacing: 0) {
+                StepIndicator(
                 currentStep: viewModel.currentStep,
                 totalSteps: NewWorkOrderWizardViewModel.totalSteps,
                 titles: NewWorkOrderWizardViewModel.stepTitles
@@ -37,6 +38,32 @@ struct NewWorkOrderWizardView: View {
             }
 
             footerButtons
+            }
+
+            if viewModel.phase == .submitting {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+
+                VStack(spacing: AppSpacing.m) {
+                    ProgressView()
+
+                    Text("İş emri oluşturuluyor...")
+                        .font(AppFont.subtitle)
+
+                    Text("Lütfen bekleyin")
+                        .font(AppFont.caption)
+                        .foregroundStyle(AppColor.secondaryText)
+                }
+                .padding(AppSpacing.xl)
+                .background(AppColor.brandSurface)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: AppRadius.card,
+                        style: .continuous
+                    )
+                )
+                .shadow(radius: 10)
+            }
         }
         .navigationTitle("Yeni İş Emri")
         .navigationBarTitleDisplayMode(.inline)

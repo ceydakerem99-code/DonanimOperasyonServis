@@ -373,11 +373,11 @@ final class NewWorkOrderWizardViewModel {
                 actor: actor,
                 request: request
             )
-            phase = .success(created.id)
+phase = .success(created.id)
         } catch let error as DomainError {
-            phase = .error(error.operatorMessage)
+phase = .error(error.operatorMessage)
         } catch {
-            phase = .error("İş emri oluşturulamadı.")
+phase = .error("İş emri oluşturulamadı.")
         }
     }
 

@@ -124,6 +124,111 @@ enum WorkOrderTemplateDefaults {
                 createdAt: now,
                 updatedAt: now
             )
-        ]
+,
+            
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-tablet-maintenance"),
+                name: "Tablet Bakım",
+                summary: "Tablet periyodik bakım ve kontrolü",
+                workType: .maintenance,
+                deviceCategory: .tablet,
+                deviceBrand: "Samsung",
+                deviceModel: "Galaxy Tab",
+                issueDescription: "Tablet genel bakım ve donanım kontrolü",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-printer-repair"),
+                name: "Yazıcı Arızası",
+                summary: "Yazıcı arıza tespit ve müdahalesi",
+                workType: .repair,
+                deviceCategory: .printer,
+                deviceBrand: "HP",
+                deviceModel: "LaserJet",
+                issueDescription: "Yazdırma problemi ve donanım kontrolü",
+                priority: .high,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-barcode-installation"),
+                name: "Barkod Okuyucu Kurulum",
+                summary: "Yeni barkod okuyucu kurulumu",
+                workType: .installation,
+                deviceCategory: .barcodeScanner,
+                deviceBrand: "Zebra",
+                deviceModel: "DS2208",
+                issueDescription: "Barkod okuyucu kurulumu ve bağlantı testi",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-computer-repair"),
+                name: "Bilgisayar Arızası",
+                summary: "Bilgisayar arıza tespit ve müdahalesi",
+                workType: .repair,
+                deviceCategory: .computer,
+                deviceBrand: "Dell",
+                deviceModel: "OptiPlex",
+                issueDescription: "Bilgisayar donanım arızasının tespiti ve giderilmesi",
+                priority: .urgent,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-cash-register-maintenance"),
+                name: "Kasa Bakımı",
+                summary: "Kasa sistemi periyodik bakım işlemi",
+                workType: .maintenance,
+                deviceCategory: .cashRegister,
+                deviceBrand: "NCR",
+                deviceModel: "POS Kasa",
+                issueDescription: "Kasa sistemi genel bakım ve kontrolü",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-tablet-installation"),
+                name: "Tablet Kurulum",
+                summary: "Yeni tablet cihaz kurulumu",
+                workType: .installation,
+                deviceCategory: .tablet,
+                deviceBrand: "Samsung",
+                deviceModel: "Galaxy Tab",
+                issueDescription: "Tablet kurulumu, yapılandırma ve test işlemleri",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            ),
+
+            WorkOrderTemplate(
+                id: WorkOrderTemplateID("template-default-printer-maintenance"),
+                name: "Yazıcı Bakım",
+                summary: "Yazıcı periyodik bakım işlemi",
+                workType: .maintenance,
+                deviceCategory: .printer,
+                deviceBrand: "HP",
+                deviceModel: "LaserJet",
+                issueDescription: "Yazıcı temizliği, bakım ve çıktı testi",
+                priority: .normal,
+                createdByUserId: userId,
+                createdAt: now,
+                updatedAt: now
+            )        ]
     }
 }

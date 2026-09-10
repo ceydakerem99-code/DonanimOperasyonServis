@@ -78,3 +78,9 @@ node_modules/
 .derivedData/
 DerivedData/
 .build/
+
+# Staj / sunum dosyaları
+Staj_*
+
+# Local logs
+*.log
